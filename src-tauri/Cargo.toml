@@ -1,0 +1,51 @@
+[package]
+name = "cc-panel"
+version = "0.1.0"
+description = "A local control panel for Claude Code"
+authors = ["VIPMRGJ"]
+edition = "2021"
+rust-version = "1.88.0"
+
+[lib]
+name = "cc_panel_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["process", "sync", "time", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+thiserror = "2"
+sha2 = "0.10"
+fs2 = "0.4"
+tempfile = "3"
+uuid = { version = "1", features = ["v4", "serde"] }
+url = "2"
+infer = "0.19"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+pdf-extract = "0.9"
+dunce = "1"
+dirs = "6"
+hex = "0.4"
+futures-util = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading"
+] }
+
+[dev-dependencies]
+httpmock = "0.7"
+pretty_assertions = "1"
