@@ -1,6 +1,6 @@
 [package]
 name = "cc-panel"
-version = "0.1.6"
+version = "0.1.7"
 description = "A local control panel for Claude Code"
 authors = ["VIPMRGJ"]
 edition = "2021"

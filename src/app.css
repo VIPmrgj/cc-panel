@@ -4044,3 +4044,300 @@ kbd {
     justify-content: center;
   }
 }
+
+/* Readable desktop scale */
+:root {
+  --sidebar-width: 260px;
+  --inspector-width: 360px;
+  --status-height: 30px;
+  --rail-width: 58px;
+  --chat-panel-width: clamp(280px, 22vw, 400px);
+  --chat-max-width: 920px;
+}
+
+.app-frame {
+  min-height: 640px;
+}
+
+.brand-header {
+  height: 58px;
+  flex-basis: 58px;
+  gap: 12px;
+  padding-inline: 14px;
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+}
+.brand-header strong {
+  font-size: 15px;
+}
+.brand-header span {
+  font-size: 10px;
+}
+.sidebar-section {
+  padding: 14px;
+}
+.section-heading h2,
+.skills-toggle__label strong {
+  font-size: 14px;
+}
+.section-heading .count,
+.field-label,
+.field-help {
+  font-size: 12px;
+}
+.text-input,
+.search-field input {
+  font-size: 13px;
+}
+.button {
+  font-size: 13px;
+}
+.skill-mode-switch__label,
+.skill-mode-switch button,
+.power-toggle {
+  font-size: 11px;
+}
+.skill-mode-hint,
+.skill-group h3 {
+  font-size: 10px;
+}
+.skill-item__name {
+  font-size: 13px;
+}
+.skill-item__description {
+  font-size: 11px;
+}
+.source-badge,
+.warning-badge,
+.muted-badge,
+.compact-select {
+  font-size: 10px;
+}
+
+.activity-rail {
+  padding-inline: 6px;
+}
+.rail-brand {
+  width: 36px;
+  height: 36px;
+  font-size: 11px;
+}
+.rail-item {
+  width: 48px;
+  min-height: 50px;
+  font-size: 10px;
+}
+.rail-count {
+  font-size: 9px;
+}
+.context-panel__header {
+  min-height: 72px;
+  padding-inline: 17px;
+}
+.context-panel__header h2 {
+  font-size: 17px;
+}
+.panel-eyebrow {
+  font-size: 10px;
+}
+.panel-search input {
+  font-size: 12px;
+}
+.conversation-item {
+  padding: 11px 10px;
+}
+.conversation-item__title {
+  font-size: 13px;
+}
+.conversation-item__meta,
+.conversation-archive-toggle {
+  font-size: 10px;
+}
+.panel-muted,
+.panel-empty p {
+  font-size: 12px;
+}
+
+.chat-header {
+  min-height: 72px;
+  padding-inline: 22px;
+}
+.chat-header__title h1 {
+  font-size: 16px;
+}
+.model-pill {
+  font-size: 11px;
+}
+.header-action {
+  font-size: 11px;
+}
+.session-state {
+  font-size: 10px;
+}
+.chat-empty h2 {
+  font-size: 21px;
+}
+.chat-empty p {
+  font-size: 13px;
+}
+.chat-empty__tips {
+  font-size: 10px;
+}
+.chat-message__meta {
+  font-size: 12px;
+}
+.chat-message__live {
+  font-size: 10px;
+}
+.markdown-body {
+  font-size: 15px;
+  line-height: 1.7;
+}
+.markdown-body h1 {
+  font-size: 20px;
+}
+.markdown-body h2 {
+  font-size: 18px;
+}
+.markdown-body h3 {
+  font-size: 16px;
+}
+.markdown-body pre {
+  font-size: 12px;
+}
+
+.chat-enhance-candidate__label,
+.composer-tool {
+  font-size: 12px;
+}
+.chat-enhance-candidate__text {
+  font-size: 13px;
+}
+.chat-composer__input {
+  font-size: 15px;
+}
+.composer-context span {
+  font-size: 10px;
+}
+.composer-queue__header {
+  font-size: 12px;
+}
+.composer-queue__header span,
+.composer-queue li,
+.composer-queue-status {
+  font-size: 11px;
+}
+.composer-disclaimer {
+  font-size: 10px;
+}
+
+.chat-card__header,
+.chat-card summary {
+  min-height: 38px;
+  font-size: 12px;
+}
+.chat-card__header strong {
+  font-size: 12px;
+}
+.chat-card__header code,
+.chat-card__status {
+  font-size: 9px;
+}
+.chat-card__body,
+.chat-card > p {
+  font-size: 12px;
+}
+.chat-card__code,
+.chat-card__result {
+  font-size: 11px;
+}
+.permission-details dt,
+.permission-details__raw summary,
+.permission-countdown {
+  font-size: 10px;
+}
+.permission-details dd {
+  font-size: 11px;
+}
+.chat-card__actions .button {
+  font-size: 11px;
+}
+
+.settings-panel__row strong,
+.settings-panel__toggle strong {
+  font-size: 12px;
+}
+.settings-panel__row small,
+.settings-panel__toggle small {
+  font-size: 10px;
+}
+.model-manager__help {
+  font-size: 11px;
+}
+.model-profile__identity strong {
+  font-size: 12px;
+}
+.model-profile__identity code,
+.model-profile__meta {
+  font-size: 10px;
+}
+.model-dialog h2 {
+  font-size: 18px;
+}
+.onboarding-step-intro {
+  font-size: 12px;
+}
+.onboarding-item__body strong {
+  font-size: 13px;
+}
+.onboarding-item__body p {
+  font-size: 11px;
+}
+.onboarding-progress {
+  font-size: 10px;
+}
+.onboarding-progress strong {
+  font-size: 11px;
+}
+
+.run-summary__status small,
+.run-metric span,
+.run-metric strong,
+.environment-item__body span,
+.environment-item__body small,
+.product-card__footer small,
+.maintenance-result small {
+  font-size: 12px;
+}
+.active-tool-panel pre {
+  font-size: 12px;
+}
+.product-form-grid label,
+.task-card__input {
+  font-size: 12px;
+}
+.product-form-grid input,
+.product-form-grid textarea,
+.task-card__input textarea {
+  font-size: 13px;
+}
+.skill-mode-help {
+  font-size: 11px;
+}
+.skill-item__help {
+  font-size: 10px;
+}
+
+@media (max-width: 620px) {
+  .rail-label {
+    font-size: 9px;
+  }
+  .chat-header {
+    padding-inline: 12px;
+  }
+  .markdown-body {
+    font-size: 14px;
+  }
+}
