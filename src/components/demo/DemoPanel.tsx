@@ -49,7 +49,7 @@ export function DemoPanel({ onRunSandbox, onCompleted }: Props) {
     setError("");
     setResult(null);
     setStatus("planned");
-    setStep(0);
+    setStep(1);
   };
 
   const advanceDemo = async () => {
@@ -143,9 +143,7 @@ export function DemoPanel({ onRunSandbox, onCompleted }: Props) {
               {status === "writing"
                 ? "正在创建桌面文件…"
                 : status === "planned"
-                  ? step === 0
-                    ? "下一步：查看固定步骤"
-                    : "下一步：在桌面创建文件"
+                  ? "下一步：在桌面创建文件"
                   : status === "completed"
                     ? "演示已完成"
                     : "开始第 1 步"}
@@ -191,7 +189,7 @@ export function DemoPanel({ onRunSandbox, onCompleted }: Props) {
                   <span className="demo-step__icon" aria-hidden="true">
                     {state === "done" ? (
                       <Check size={15} />
-                    ) : state === "active" ? (
+                    ) : state === "active" && status === "writing" ? (
                       <CircleDashed size={15} className="spin" />
                     ) : (
                       <Icon size={15} />

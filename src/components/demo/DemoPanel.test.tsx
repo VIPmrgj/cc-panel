@@ -32,9 +32,6 @@ describe("DemoPanel", () => {
       "小明",
     );
     await userEvent.click(screen.getByRole("button", { name: "开始第 1 步" }));
-    await userEvent.click(
-      screen.getByRole("button", { name: "下一步：查看固定步骤" }),
-    );
     expect(
       screen.getByText("第 2 步已展示。点击下一步后，才会在桌面创建文件。"),
     ).toBeInTheDocument();
