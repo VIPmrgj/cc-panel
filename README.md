@@ -3,6 +3,10 @@
 CC Panel 是运行在 Windows 上的 Claude Code 本地图形控制面板。它包装本机已安装的官方 `claude` CLI，不重写 Claude 的 agent loop；React 负责交互展示，Rust 负责进程、文件、网络、环境变量、密钥、Skill、附件和 Prompt 组合。
 
 > 安全边界：**React 无文件/Shell/网络访问、内容不写盘**。
+## 下载体验
+
+Windows 用户可以直接下载当前体验版：[CC Panel 0.1.5 安装包](./CC%20Panel_0.1.5_x64-setup.exe)。安装后仍需要本机已安装并登录官方 claude CLI。
+
 
 ## 当前能力
 
