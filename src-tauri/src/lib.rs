@@ -79,6 +79,7 @@ pub fn run() {
             commands::select_model_profile,
             commands::restore_model_profile_selection,
             commands::list_conversations,
+            commands::run_demo_sandbox,
             commands::delete_conversation,
             commands::rename_conversation,
             commands::set_conversation_favorite,

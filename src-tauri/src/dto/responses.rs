@@ -329,3 +329,12 @@ pub struct DownloadedUpdate {
     pub path: String,
     pub bytes: u64,
 }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DemoRunResult {
+    pub user_id: String,
+    pub file_name: String,
+    pub relative_path: String,
+    pub content: String,
+    pub created_at_ms: u64,
+}

@@ -24,7 +24,7 @@ function makeProps(
     experienceMode: "guided" as const,
     ollama,
     busy: false,
-    exampleBusy: false,
+
     ollamaSaving: false,
     onExperienceModeChange: vi.fn(),
     onCopyInstallCommand: vi.fn(),
@@ -32,7 +32,7 @@ function makeProps(
     onSelectProject: vi.fn(),
     onAddModel: vi.fn(),
     onSelectOllamaModel: vi.fn(),
-    onRunExample: vi.fn(),
+    onOpenDemo: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -43,6 +43,15 @@ describe("OnboardingDialog", () => {
     const props = makeProps({ open: false });
     const { container } = render(<OnboardingDialog {...props} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("opens the no-API sandbox demo from the first onboarding step", async () => {
+    const props = makeProps();
+    render(<OnboardingDialog {...props} />);
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "开始沙盒演示" })[0],
+    );
+    expect(props.onOpenDemo).toHaveBeenCalledTimes(1);
   });
 
   it("offers Claude installation and recheck when Claude is missing", async () => {

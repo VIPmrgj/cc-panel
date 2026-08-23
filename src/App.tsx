@@ -23,6 +23,7 @@ import type {
   CompositionRequest,
   CompositionResult,
   DiagnosticResult,
+  DemoRunResult,
   DownloadedUpdate,
   EnvironmentReport,
   ConversationSummary,
@@ -59,11 +60,9 @@ import { Notice } from "./components/common/Notice";
 import { SensitiveImportDialog } from "./components/common/SensitiveImportDialog";
 import { OnboardingDialog } from "./components/onboarding/OnboardingDialog";
 import { TaskPanel } from "./components/tasks/TaskPanel";
+import { DemoPanel } from "./components/demo/DemoPanel";
 import { RunCenter } from "./components/runtime/RunCenter";
-import {
-  TASK_TEMPLATES,
-  type TaskTemplate,
-} from "./components/tasks/taskTemplates";
+import type { TaskTemplate } from "./components/tasks/taskTemplates";
 import {
   persistExperienceMode,
   persistOnboardingComplete,
@@ -315,6 +314,36 @@ export default function App() {
     setLiveMessage(message);
   }, []);
 
+  const openDemo = useCallback(() => {
+    persistOnboardingComplete();
+    setOnboardingOpen(false);
+    setActiveActivity("demo");
+    setPanelOpen(true);
+    const message = "已进入演示模式：不会调用模型或读取真实项目。";
+    setOperationMessage(message);
+    setLiveMessage(message);
+  }, []);
+
+  const runDemoSandbox = useCallback(
+    async (userId: string): Promise<DemoRunResult> => {
+      try {
+        const result = await commands.runDemoSandbox(userId);
+        setOperationMessage("演示文件已在 CC Panel 沙盒目录中创建。");
+        setLiveMessage("演示已完成，可以查看文件内容和预览。");
+        return result;
+      } catch (error) {
+        reportError(error);
+        throw error;
+      }
+    },
+    [reportError],
+  );
+
+  const enterRealAgent = useCallback(() => {
+    setActiveActivity("settings");
+    setPanelOpen(true);
+    setOnboardingOpen(true);
+  }, []);
   const projectMemoryMutation = useMutation({
     mutationFn: commands.saveProjectMemory,
     onSuccess: (memory) => {
@@ -1327,12 +1356,6 @@ export default function App() {
     [sendMessage],
   );
 
-  const runExampleTask = useCallback(() => {
-    persistOnboardingComplete();
-    setOnboardingOpen(false);
-    runTaskTemplate(TASK_TEMPLATES[0]);
-  }, [runTaskTemplate]);
-
   useEffect(() => {
     if (
       queuedPrompts.length === 0 ||
@@ -1845,7 +1868,22 @@ export default function App() {
       );
     }
     if (activeActivity === "tasks") {
-      return <TaskPanel busy={lifecycleBusy} onRun={runTaskTemplate} />;
+      return (
+        <TaskPanel
+          busy={lifecycleBusy}
+          onRun={runTaskTemplate}
+          onOpenDemo={openDemo}
+        />
+      );
+    }
+    if (activeActivity === "demo") {
+      return (
+        <DemoPanel
+          onRunSandbox={runDemoSandbox}
+          onExit={() => setActiveActivity("chat")}
+          onEnterRealAgent={enterRealAgent}
+        />
+      );
     }
     if (activeActivity === "runtime") {
       return (
@@ -2143,7 +2181,7 @@ export default function App() {
         experienceMode={experienceMode}
         ollama={bootstrap.ollama}
         busy={onboardingBusy || rootsMutation.isPending}
-        exampleBusy={sending || transitionBusy}
+        onOpenDemo={openDemo}
         ollamaSaving={ollamaMutation.isPending}
         onExperienceModeChange={handleExperienceModeChange}
         onCopyInstallCommand={async () => {
@@ -2167,7 +2205,7 @@ export default function App() {
         onSelectProject={() => rootsMutation.mutate("project")}
         onAddModel={() => setModelDialog(null)}
         onSelectOllamaModel={(model) => ollamaMutation.mutate(model)}
-        onRunExample={runExampleTask}
+
         onClose={() => {
           persistOnboardingComplete();
           setOnboardingOpen(false);

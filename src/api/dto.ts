@@ -442,3 +442,10 @@ export interface DownloadedUpdate {
   path: string;
   bytes: number;
 }
+export interface DemoRunResult {
+  userId: string;
+  fileName: string;
+  relativePath: string;
+  content: string;
+  createdAtMs: number;
+}

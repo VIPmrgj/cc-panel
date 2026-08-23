@@ -143,6 +143,20 @@ describe("Tauri command contracts", () => {
     });
   });
 
+  it("keeps the demo command isolated from Claude session requests", async () => {
+    invokeMock.mockResolvedValue({
+      userId: "小明",
+      fileName: "hello_小明.html",
+      relativePath: "demo-sandbox/hello_小明.html",
+      content: "<html></html>",
+      createdAtMs: 1,
+    });
+
+    await commands.runDemoSandbox("小明");
+    expect(invokeMock).toHaveBeenLastCalledWith("run_demo_sandbox", {
+      userId: "小明",
+    });
+  });
   it("wraps composition requests and preserves backend errors", async () => {
     const request = {
       originalPrompt: "test",

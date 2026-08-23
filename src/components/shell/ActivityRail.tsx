@@ -2,6 +2,7 @@ import {
   Activity,
   Boxes,
   ClipboardList,
+  PlayCircle,
   MessageSquare,
   Paperclip,
   Settings,
@@ -10,6 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 export type ActivityId =
+  | "demo"
   | "chat"
   | "tasks"
   | "runtime"
@@ -25,6 +27,7 @@ interface ActivityItem {
 }
 
 const activities: ActivityItem[] = [
+  { id: "demo", label: "演示", icon: PlayCircle },
   { id: "chat", label: "聊天", icon: MessageSquare },
   { id: "tasks", label: "任务", icon: ClipboardList },
   { id: "runtime", label: "运行", icon: Activity },

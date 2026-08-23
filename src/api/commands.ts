@@ -11,6 +11,7 @@ import type {
   CompositionResult,
   ConversationHistory,
   DiagnosticResult,
+  DemoRunResult,
   DownloadedUpdate,
   EnvironmentReport,
   ProjectMemory,
@@ -122,6 +123,8 @@ export const commands = {
       expectedRevision,
     }),
   listConversations: () => call<ConversationSummary[]>("list_conversations"),
+  runDemoSandbox: (userId: string) =>
+    call<DemoRunResult>("run_demo_sandbox", { userId }),
   deleteConversation: (sessionId: string) =>
     call<ConversationSummary[]>("delete_conversation", { sessionId }),
   startClaudeSession: (

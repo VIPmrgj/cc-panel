@@ -7,6 +7,7 @@ import {
   KeyRound,
   Play,
   RotateCw,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -23,7 +24,7 @@ interface Props {
   experienceMode: ExperienceMode;
   ollama: OllamaStatus;
   busy: boolean;
-  exampleBusy?: boolean;
+
   ollamaSaving?: boolean;
   onExperienceModeChange: (mode: ExperienceMode) => void;
   onCopyInstallCommand: () => void;
@@ -31,7 +32,7 @@ interface Props {
   onSelectProject: () => void;
   onAddModel: () => void;
   onSelectOllamaModel: (model: string | null) => void;
-  onRunExample: () => void;
+  onOpenDemo: () => void;
   onClose: () => void;
 }
 
@@ -43,7 +44,7 @@ export function OnboardingDialog({
   experienceMode,
   ollama,
   busy,
-  exampleBusy = false,
+
   ollamaSaving = false,
   onExperienceModeChange,
   onCopyInstallCommand,
@@ -51,7 +52,7 @@ export function OnboardingDialog({
   onSelectProject,
   onAddModel,
   onSelectOllamaModel,
-  onRunExample,
+  onOpenDemo,
   onClose,
 }: Props) {
   const titleId = useId();
@@ -66,7 +67,7 @@ export function OnboardingDialog({
     "选择工作文件夹",
     "选择默认模型",
     "本地 Prompt 优化",
-    "试运行示例任务",
+    "演示模式",
   ];
 
   useEffect(() => {
@@ -144,6 +145,20 @@ export function OnboardingDialog({
           <p className="onboarding-note">
             两种体验不减少任何能力，只改变默认显示方式；所有高级选项始终可以找到。
           </p>
+          <div className="onboarding-demo-callout">
+            <ShieldCheck size={17} aria-hidden="true" />
+            <div>
+              <strong>还没有 API Key？先体验演示模式</strong>
+              <p>不调用模型、不读取真实项目，只执行一个安全的固定沙盒流程。</p>
+              <Button
+                variant="secondary"
+                icon={<Play size={14} />}
+                onClick={onOpenDemo}
+              >
+                开始沙盒演示
+              </Button>
+            </div>
+          </div>
         </div>
 
         <div className="onboarding-list" data-active-step={step}>
@@ -251,23 +266,16 @@ export function OnboardingDialog({
           />
           <OnboardingRow
             icon={<Play size={15} aria-hidden="true" />}
-            title="5. 试运行示例任务"
-            detail="让 Claude 只读分析当前项目，帮助你确认配置是否正常。"
+            title="5. 演示模式"
+            detail="不调用真实模型，不读取真实项目，只在 CC Panel 沙盒目录创建一个欢迎文件。"
             ready={false}
             actions={
               <Button
                 variant="secondary"
-                busy={exampleBusy}
-                disabled={
-                  exampleBusy ||
-                  !claudeCliAvailable ||
-                  !projectLabel ||
-                  !modelReady
-                }
                 icon={<Play size={14} />}
-                onClick={onRunExample}
+                onClick={onOpenDemo}
               >
-                运行示例任务
+                开始沙盒演示
               </Button>
             }
           />
@@ -283,7 +291,7 @@ export function OnboardingDialog({
           <button
             type="button"
             className="button button--ghost"
-            disabled={busy || exampleBusy}
+            disabled={busy}
             onClick={onClose}
           >
             跳过全部
@@ -293,7 +301,7 @@ export function OnboardingDialog({
               <button
                 type="button"
                 className="button button--ghost"
-                disabled={busy || exampleBusy}
+                disabled={busy}
                 onClick={() => setStep((value) => value - 1)}
               >
                 <ChevronLeft size={14} aria-hidden="true" />
@@ -303,7 +311,7 @@ export function OnboardingDialog({
             <button
               type="button"
               className="button button--ghost"
-              disabled={busy || exampleBusy}
+              disabled={busy}
               onClick={() => {
                 if (step >= totalSteps - 1) onClose();
                 else setStep((value) => value + 1);
@@ -313,7 +321,7 @@ export function OnboardingDialog({
             </button>
             <Button
               variant="primary"
-              disabled={busy || exampleBusy}
+              disabled={busy}
               onClick={() => {
                 if (step >= totalSteps - 1) onClose();
                 else setStep((value) => value + 1);
