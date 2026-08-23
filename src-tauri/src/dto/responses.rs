@@ -334,7 +334,7 @@ pub struct DownloadedUpdate {
 pub struct DemoRunResult {
     pub user_id: String,
     pub file_name: String,
-    pub relative_path: String,
+    pub display_path: String,
     pub content: String,
     pub created_at_ms: u64,
 }

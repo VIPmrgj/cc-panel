@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   CircleDashed,
   FilePlus2,
-  LogOut,
   Play,
   ShieldCheck,
   Workflow,
@@ -13,21 +12,20 @@ import type { DemoRunResult } from "../../api/dto";
 
 interface Props {
   onRunSandbox: (userId: string) => Promise<DemoRunResult>;
-  onExit: () => void;
-  onEnterRealAgent: () => void;
+  onCompleted?: () => void;
 }
 
-type DemoStatus = "idle" | "running" | "completed" | "error";
+type DemoStatus = "idle" | "planned" | "writing" | "completed" | "error";
 type StepState = "pending" | "active" | "done";
 
 const DEMO_STEPS = [
-  { title: "接收体验信息", tool: "界面输入", icon: Workflow },
-  { title: "展示固定任务步骤", tool: "预设流程", icon: Check },
-  { title: "创建安全示例文件", tool: "沙盒文件写入", icon: FilePlus2 },
-  { title: "展示文件结果与预览", tool: "结果预览", icon: CheckCircle2 },
+  { title: "接收你的名字或 ID", tool: "界面输入", icon: Workflow },
+  { title: "展示 Agent 的固定步骤", tool: "预设流程", icon: Check },
+  { title: "在桌面创建示例文件", tool: "桌面文件写入", icon: FilePlus2 },
+  { title: "展示文件内容与预览", tool: "结果预览", icon: CheckCircle2 },
 ];
 
-export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
+export function DemoPanel({ onRunSandbox, onCompleted }: Props) {
   const [userId, setUserId] = useState("");
   const [status, setStatus] = useState<DemoStatus>("idle");
   const [step, setStep] = useState(0);
@@ -42,7 +40,7 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
     };
   }, []);
 
-  const runDemo = async () => {
+  const beginDemo = () => {
     const value = userId.trim();
     if (!value) {
       setError("请先输入名字或用户 ID。");
@@ -50,24 +48,28 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
     }
     setError("");
     setResult(null);
-    setStatus("running");
+    setStatus("planned");
     setStep(0);
+  };
 
-    await wait(350);
-    if (!mountedRef.current) return;
-    setStep(1);
-    await wait(450);
-    if (!mountedRef.current) return;
+  const advanceDemo = async () => {
+    if (status !== "planned") return;
+    if (step === 0) {
+      setStep(1);
+      return;
+    }
+
+    const value = userId.trim();
+    setError("");
+    setStatus("writing");
     setStep(2);
-
     try {
       const next = await onRunSandbox(value);
       if (!mountedRef.current) return;
       setResult(next);
       setStep(3);
-      await wait(350);
-      if (!mountedRef.current) return;
       setStatus("completed");
+      onCompleted?.();
     } catch (runError) {
       if (!mountedRef.current) return;
       setStatus("error");
@@ -90,21 +92,13 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
     <section className="demo-panel" aria-labelledby="demo-panel-title">
       <header className="context-panel__header demo-panel__header">
         <div>
-          <p className="panel-eyebrow">NO API · SAFE SANDBOX</p>
-          <h2 id="demo-panel-title">演示模式</h2>
+          <p className="panel-eyebrow">最后一步 · NO API · SAFE SANDBOX</p>
+          <h2 id="demo-panel-title">动手体验 Agent 流程</h2>
           <p className="demo-panel__subtitle">
-            用一个固定的本地流程了解 Agent 如何接收任务、执行步骤并产出文件。
+            这是新手引导的最后一步。你会亲自看到“接收任务 → 展示计划 → 创建文件
+            → 查看结果”。
           </p>
         </div>
-        <button
-          type="button"
-          className="panel-icon-button"
-          aria-label="退出演示模式"
-          title="退出演示模式"
-          onClick={onExit}
-        >
-          <LogOut size={16} aria-hidden="true" />
-        </button>
       </header>
 
       <div className="demo-panel__body">
@@ -123,16 +117,19 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
           className="demo-input-card"
           onSubmit={(event) => {
             event.preventDefault();
-            if (status !== "running") void runDemo();
+            if (status === "idle" || status === "error") void beginDemo();
+            else if (status === "planned") void advanceDemo();
           }}
         >
           <label htmlFor="demo-user-id">先输入你的名字或用户 ID</label>
-          <span>它只用于生成演示文件名和文件内容，不会发送到任何模型。</span>
+          <span>
+            它只用于生成演示文件名和文件内容，不会发送到任何模型。每一步由你确认后继续。
+          </span>
           <input
             id="demo-user-id"
             value={userId}
             maxLength={48}
-            disabled={status === "running"}
+            disabled={status === "writing" || status === "completed"}
             onChange={(event) => setUserId(event.target.value)}
             placeholder="例如：小明 或 user-001"
           />
@@ -140,12 +137,20 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
             <button
               type="submit"
               className="button button--primary"
-              disabled={status === "running"}
+              disabled={status === "writing" || status === "completed"}
             >
               <Play size={15} aria-hidden="true" />
-              {status === "running" ? "演示进行中…" : "开始沙盒演示"}
+              {status === "writing"
+                ? "正在创建桌面文件…"
+                : status === "planned"
+                  ? step === 0
+                    ? "下一步：查看固定步骤"
+                    : "下一步：在桌面创建文件"
+                  : status === "completed"
+                    ? "演示已完成"
+                    : "开始第 1 步"}
             </button>
-            {status !== "idle" && status !== "running" && (
+            {(status === "completed" || status === "error") && (
               <button
                 type="button"
                 className="button button--ghost"
@@ -167,13 +172,15 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
               <h3 id="demo-progress-title">当前任务：生成欢迎示例文件</h3>
             </div>
             <span className={"demo-status demo-status--" + status}>
-              {status === "running"
-                ? "执行中"
-                : status === "completed"
-                  ? "已完成"
-                  : status === "error"
-                    ? "需要重试"
-                    : "等待开始"}
+              {status === "planned"
+                ? "等待你继续"
+                : status === "writing"
+                  ? "正在写入桌面"
+                  : status === "completed"
+                    ? "已完成"
+                    : status === "error"
+                      ? "需要重试"
+                      : "等待开始"}
             </span>
           </div>
           <ol className="demo-steps">
@@ -199,17 +206,17 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
             })}
           </ol>
           <p className="demo-progress-card__note" aria-live="polite">
-            {status === "running"
-              ? "正在执行第 " +
-                Math.min(step + 1, DEMO_STEPS.length) +
-                " 步，共 " +
-                DEMO_STEPS.length +
-                " 步。"
-              : status === "completed"
-                ? "固定流程已执行完毕，下面可以查看生成结果。"
-                : status === "error"
-                  ? "没有调用模型；仅本地沙盒文件写入失败，可以安全重试。"
-                  : "点击“开始沙盒演示”后，这些步骤会按固定顺序执行。"}
+            {status === "planned"
+              ? step === 0
+                ? "第 1 步已准备好。点击下一步，先看 Agent 会做什么。"
+                : "第 2 步已展示。点击下一步后，才会在桌面创建文件。"
+              : status === "writing"
+                ? "正在执行第 3 步：只写入桌面上的一个固定 HTML 示例文件。"
+                : status === "completed"
+                  ? "固定流程已执行完毕，下面显示的是真实写入桌面的文件内容。"
+                  : status === "error"
+                    ? "没有调用模型；桌面文件写入失败，可以安全重试。"
+                    : "输入名字或 ID 后，点击“开始第 1 步”查看流程。"}
           </p>
         </section>
 
@@ -226,7 +233,7 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
                 <p className="panel-eyebrow">VERIFIABLE RESULT</p>
                 <h3 id="demo-result-title">文件已创建</h3>
               </div>
-              <span className="demo-result__path">{result.relativePath}</span>
+              <span className="demo-result__path">{result.displayPath}</span>
             </div>
             <div className="demo-result__grid">
               <div>
@@ -244,30 +251,14 @@ export function DemoPanel({ onRunSandbox, onExit, onEnterRealAgent }: Props) {
               </div>
             </div>
             <p className="demo-result__note">
-              文件保存在 CC Panel 自己的应用数据目录中，不在你选择的项目目录里。
+              文件已经真实写入你的桌面，不在你选择的项目目录里，也没有调用模型或执行外部命令。
             </p>
-            <div className="demo-result__actions">
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={onEnterRealAgent}
-              >
-                了解真实 Agent 配置
-              </button>
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={onExit}
-              >
-                返回聊天
-              </button>
-            </div>
           </section>
         )}
 
         <p className="demo-panel__footer">
-          你可以随时退出演示。只有进入真实 Agent
-          并主动发送消息后，才可能调用模型或执行项目操作。
+          演示完成后，请点击引导窗口底部的“完成引导”；如果暂时没有 API
+          Key，也可以先跳过后续真实配置。
         </p>
       </div>
     </section>
@@ -280,12 +271,7 @@ function stepState(
   index: number,
 ): StepState {
   if (status === "completed" || index < activeStep) return "done";
-  if (status === "running" && index === activeStep) return "active";
+  if ((status === "planned" || status === "writing") && index === activeStep)
+    return "active";
   return "pending";
-}
-
-function wait(milliseconds: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, milliseconds);
-  });
 }

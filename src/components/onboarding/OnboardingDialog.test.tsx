@@ -32,7 +32,13 @@ function makeProps(
     onSelectProject: vi.fn(),
     onAddModel: vi.fn(),
     onSelectOllamaModel: vi.fn(),
-    onOpenDemo: vi.fn(),
+    onRunDemo: vi.fn().mockResolvedValue({
+      userId: "小明",
+      fileName: "hello_小明.html",
+      displayPath: "桌面/hello_小明.html",
+      content: "<html></html>",
+      createdAtMs: 1,
+    }),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -45,13 +51,32 @@ describe("OnboardingDialog", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("opens the no-API sandbox demo from the first onboarding step", async () => {
+  it("shows the demo only as the final onboarding step", async () => {
     const props = makeProps();
     render(<OnboardingDialog {...props} />);
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "开始沙盒演示" })[0],
+    expect(
+      screen.queryByRole("heading", { name: "动手体验 Agent 流程" }),
+    ).not.toBeInTheDocument();
+    for (let index = 0; index < 5; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    }
+    expect(
+      screen.getByRole("heading", { name: "动手体验 Agent 流程" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成引导" })).toBeDisabled();
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "先输入你的名字或用户 ID" }),
+      "小明",
     );
-    expect(props.onOpenDemo).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "开始第 1 步" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "下一步：查看固定步骤" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "下一步：在桌面创建文件" }),
+    );
+    expect(props.onRunDemo).toHaveBeenCalledWith("小明");
+    expect(screen.getByRole("button", { name: "完成引导" })).toBeEnabled();
   });
 
   it("offers Claude installation and recheck when Claude is missing", async () => {

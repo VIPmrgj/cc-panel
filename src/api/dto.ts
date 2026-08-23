@@ -445,7 +445,7 @@ export interface DownloadedUpdate {
 export interface DemoRunResult {
   userId: string;
   fileName: string;
-  relativePath: string;
+  displayPath: string;
   content: string;
   createdAtMs: number;
 }

@@ -60,7 +60,6 @@ import { Notice } from "./components/common/Notice";
 import { SensitiveImportDialog } from "./components/common/SensitiveImportDialog";
 import { OnboardingDialog } from "./components/onboarding/OnboardingDialog";
 import { TaskPanel } from "./components/tasks/TaskPanel";
-import { DemoPanel } from "./components/demo/DemoPanel";
 import { RunCenter } from "./components/runtime/RunCenter";
 import type { TaskTemplate } from "./components/tasks/taskTemplates";
 import {
@@ -314,21 +313,11 @@ export default function App() {
     setLiveMessage(message);
   }, []);
 
-  const openDemo = useCallback(() => {
-    persistOnboardingComplete();
-    setOnboardingOpen(false);
-    setActiveActivity("demo");
-    setPanelOpen(true);
-    const message = "已进入演示模式：不会调用模型或读取真实项目。";
-    setOperationMessage(message);
-    setLiveMessage(message);
-  }, []);
-
   const runDemoSandbox = useCallback(
     async (userId: string): Promise<DemoRunResult> => {
       try {
         const result = await commands.runDemoSandbox(userId);
-        setOperationMessage("演示文件已在 CC Panel 沙盒目录中创建。");
+        setOperationMessage("演示文件已真实写入桌面。");
         setLiveMessage("演示已完成，可以查看文件内容和预览。");
         return result;
       } catch (error) {
@@ -339,11 +328,6 @@ export default function App() {
     [reportError],
   );
 
-  const enterRealAgent = useCallback(() => {
-    setActiveActivity("settings");
-    setPanelOpen(true);
-    setOnboardingOpen(true);
-  }, []);
   const projectMemoryMutation = useMutation({
     mutationFn: commands.saveProjectMemory,
     onSuccess: (memory) => {
@@ -1868,22 +1852,7 @@ export default function App() {
       );
     }
     if (activeActivity === "tasks") {
-      return (
-        <TaskPanel
-          busy={lifecycleBusy}
-          onRun={runTaskTemplate}
-          onOpenDemo={openDemo}
-        />
-      );
-    }
-    if (activeActivity === "demo") {
-      return (
-        <DemoPanel
-          onRunSandbox={runDemoSandbox}
-          onExit={() => setActiveActivity("chat")}
-          onEnterRealAgent={enterRealAgent}
-        />
-      );
+      return <TaskPanel busy={lifecycleBusy} onRun={runTaskTemplate} />;
     }
     if (activeActivity === "runtime") {
       return (
@@ -2181,7 +2150,7 @@ export default function App() {
         experienceMode={experienceMode}
         ollama={bootstrap.ollama}
         busy={onboardingBusy || rootsMutation.isPending}
-        onOpenDemo={openDemo}
+        onRunDemo={runDemoSandbox}
         ollamaSaving={ollamaMutation.isPending}
         onExperienceModeChange={handleExperienceModeChange}
         onCopyInstallCommand={async () => {

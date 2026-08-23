@@ -4633,3 +4633,24 @@ kbd {
 .onboarding-demo-callout {
   margin: 10px 18px 0;
 }
+
+.onboarding-dialog[data-onboarding-step="5"] {
+  width: min(760px, calc(100vw - 32px));
+}
+.onboarding-demo-step {
+  border-top: 1px solid var(--chat-border);
+}
+.onboarding-demo-step .demo-panel {
+  height: auto;
+  background: transparent;
+}
+.onboarding-demo-step .demo-panel__header {
+  padding: 14px 18px 10px;
+  border-bottom: 0;
+}
+.onboarding-demo-step .demo-panel__body {
+  padding: 0 18px 14px;
+}
+.onboarding-demo-step .demo-panel__footer {
+  padding-bottom: 0;
+}

@@ -5,16 +5,16 @@ import {
   Clipboard,
   FolderOpen,
   KeyRound,
-  Play,
   RotateCw,
-  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { OllamaStatus } from "../../api/dto";
 import type { ExperienceMode } from "../../state/experienceMode";
+import type { DemoRunResult } from "../../api/dto";
 import { Button } from "../common/Button";
+import { DemoPanel } from "../demo/DemoPanel";
 
 interface Props {
   open: boolean;
@@ -32,7 +32,7 @@ interface Props {
   onSelectProject: () => void;
   onAddModel: () => void;
   onSelectOllamaModel: (model: string | null) => void;
-  onOpenDemo: () => void;
+  onRunDemo: (userId: string) => Promise<DemoRunResult>;
   onClose: () => void;
 }
 
@@ -52,7 +52,7 @@ export function OnboardingDialog({
   onSelectProject,
   onAddModel,
   onSelectOllamaModel,
-  onOpenDemo,
+  onRunDemo,
   onClose,
 }: Props) {
   const titleId = useId();
@@ -60,6 +60,7 @@ export function OnboardingDialog({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const [step, setStep] = useState(0);
+  const [demoCompleted, setDemoCompleted] = useState(false);
   const totalSteps = 6;
   const stepLabels = [
     "选择体验方式",
@@ -67,11 +68,14 @@ export function OnboardingDialog({
     "选择工作文件夹",
     "选择默认模型",
     "本地 Prompt 优化",
-    "演示模式",
+    "动手体验 Agent 流程",
   ];
 
   useEffect(() => {
-    if (open) setStep(0);
+    if (open) {
+      setStep(0);
+      setDemoCompleted(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -92,6 +96,7 @@ export function OnboardingDialog({
     <div className="modal-backdrop">
       <section
         className="model-dialog onboarding-dialog"
+        data-onboarding-step={step}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -145,141 +150,122 @@ export function OnboardingDialog({
           <p className="onboarding-note">
             两种体验不减少任何能力，只改变默认显示方式；所有高级选项始终可以找到。
           </p>
-          <div className="onboarding-demo-callout">
-            <ShieldCheck size={17} aria-hidden="true" />
-            <div>
-              <strong>还没有 API Key？先体验演示模式</strong>
-              <p>不调用模型、不读取真实项目，只执行一个安全的固定沙盒流程。</p>
-              <Button
-                variant="secondary"
-                icon={<Play size={14} />}
-                onClick={onOpenDemo}
-              >
-                开始沙盒演示
-              </Button>
-            </div>
-          </div>
         </div>
 
-        <div className="onboarding-list" data-active-step={step}>
-          <OnboardingRow
-            icon={<KeyRound size={15} aria-hidden="true" />}
-            title="1. 检查 Claude Code"
-            detail={
-              claudeCliAvailable
-                ? "已检测到 Claude Code，可以在本机启动会话。"
-                : "CC Panel 需要调用本机的官方 Claude Code 命令行。"
-            }
-            ready={claudeCliAvailable}
-            actions={
-              <>
-                {!claudeCliAvailable && (
+        {step < totalSteps - 1 && (
+          <div className="onboarding-list" data-active-step={step}>
+            <OnboardingRow
+              icon={<KeyRound size={15} aria-hidden="true" />}
+              title="1. 检查 Claude Code"
+              detail={
+                claudeCliAvailable
+                  ? "已检测到 Claude Code，可以在本机启动会话。"
+                  : "CC Panel 需要调用本机的官方 Claude Code 命令行。"
+              }
+              ready={claudeCliAvailable}
+              actions={
+                <>
+                  {!claudeCliAvailable && (
+                    <Button
+                      variant="secondary"
+                      busy={busy}
+                      icon={<Clipboard size={14} />}
+                      onClick={onCopyInstallCommand}
+                    >
+                      复制安装命令
+                    </Button>
+                  )}
                   <Button
-                    variant="secondary"
+                    variant="ghost"
                     busy={busy}
-                    icon={<Clipboard size={14} />}
-                    onClick={onCopyInstallCommand}
+                    icon={<RotateCw size={14} />}
+                    onClick={onRecheckClaude}
                   >
-                    复制安装命令
+                    重新检测
                   </Button>
-                )}
+                </>
+              }
+            />
+            <OnboardingRow
+              icon={<FolderOpen size={15} aria-hidden="true" />}
+              title="2. 选择工作文件夹"
+              detail={
+                projectLabel
+                  ? `当前项目：${projectLabel}`
+                  : "选择项目文件夹，Claude Code 会在其中工作。"
+              }
+              ready={Boolean(projectLabel)}
+              actions={
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   busy={busy}
-                  icon={<RotateCw size={14} />}
-                  onClick={onRecheckClaude}
+                  icon={<FolderOpen size={14} />}
+                  onClick={onSelectProject}
                 >
-                  重新检测
+                  {projectLabel ? "更换文件夹" : "选择项目目录"}
                 </Button>
-              </>
-            }
-          />
-          <OnboardingRow
-            icon={<FolderOpen size={15} aria-hidden="true" />}
-            title="2. 选择工作文件夹"
-            detail={
-              projectLabel
-                ? `当前项目：${projectLabel}`
-                : "选择项目文件夹，Claude Code 会在其中工作。"
-            }
-            ready={Boolean(projectLabel)}
-            actions={
-              <Button
-                variant="secondary"
-                busy={busy}
-                icon={<FolderOpen size={14} />}
-                onClick={onSelectProject}
-              >
-                {projectLabel ? "更换文件夹" : "选择项目目录"}
-              </Button>
-            }
-          />
-          <OnboardingRow
-            icon={<KeyRound size={15} aria-hidden="true" />}
-            title="3. 选择默认模型"
-            detail={
-              modelReady
-                ? "已配置可用模型，发送消息时会使用当前选中的模型。"
-                : "添加一个模型配置；也可以稍后在模型栏完成。"
-            }
-            ready={modelReady}
-            actions={
-              <Button
-                variant="secondary"
-                busy={busy}
-                icon={<KeyRound size={14} />}
-                onClick={onAddModel}
-              >
-                {modelReady ? "管理模型" : "添加模型配置"}
-              </Button>
-            }
-          />
-          <OnboardingRow
-            icon={<Sparkles size={15} aria-hidden="true" />}
-            title="4. 本地 Prompt 优化"
-            detail={
-              ollama.online
-                ? "Ollama 已连接。开启后，发送前可以用本地模型整理指令，原文不会被替换。"
-                : "未连接 Ollama。可以跳过，之后安装或启动 Ollama 后再选择。"
-            }
-            ready={Boolean(ollama.online && ollama.selectedModel)}
-            actions={
-              <label className="onboarding-select">
-                <span className="sr-only">选择本地 Prompt 优化模型</span>
-                <select
-                  aria-label="选择本地 Prompt 优化模型"
-                  value={ollama.selectedModel ?? ""}
-                  disabled={ollamaSaving || !ollama.models.length}
-                  onChange={(event) =>
-                    onSelectOllamaModel(event.target.value || null)
-                  }
+              }
+            />
+            <OnboardingRow
+              icon={<KeyRound size={15} aria-hidden="true" />}
+              title="3. 选择默认模型"
+              detail={
+                modelReady
+                  ? "已配置可用模型，发送消息时会使用当前选中的模型。"
+                  : "添加一个模型配置；也可以稍后在模型栏完成。"
+              }
+              ready={modelReady}
+              actions={
+                <Button
+                  variant="secondary"
+                  busy={busy}
+                  icon={<KeyRound size={14} />}
+                  onClick={onAddModel}
                 >
-                  <option value="">关闭本地优化</option>
-                  {ollama.models.map((model) => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            }
-          />
-          <OnboardingRow
-            icon={<Play size={15} aria-hidden="true" />}
-            title="5. 演示模式"
-            detail="不调用真实模型，不读取真实项目，只在 CC Panel 沙盒目录创建一个欢迎文件。"
-            ready={false}
-            actions={
-              <Button
-                variant="secondary"
-                icon={<Play size={14} />}
-                onClick={onOpenDemo}
-              >
-                开始沙盒演示
-              </Button>
-            }
-          />
-        </div>
+                  {modelReady ? "管理模型" : "添加模型配置"}
+                </Button>
+              }
+            />
+            <OnboardingRow
+              icon={<Sparkles size={15} aria-hidden="true" />}
+              title="4. 本地 Prompt 优化"
+              detail={
+                ollama.online
+                  ? "Ollama 已连接。开启后，发送前可以用本地模型整理指令，原文不会被替换。"
+                  : "未连接 Ollama。可以跳过，之后安装或启动 Ollama 后再选择。"
+              }
+              ready={Boolean(ollama.online && ollama.selectedModel)}
+              actions={
+                <label className="onboarding-select">
+                  <span className="sr-only">选择本地 Prompt 优化模型</span>
+                  <select
+                    aria-label="选择本地 Prompt 优化模型"
+                    value={ollama.selectedModel ?? ""}
+                    disabled={ollamaSaving || !ollama.models.length}
+                    onChange={(event) =>
+                      onSelectOllamaModel(event.target.value || null)
+                    }
+                  >
+                    <option value="">关闭本地优化</option>
+                    {ollama.models.map((model) => (
+                      <option key={model.name} value={model.name}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              }
+            />
+          </div>
+        )}
+        {step >= totalSteps - 1 && (
+          <div className="onboarding-demo-step">
+            <DemoPanel
+              onRunSandbox={onRunDemo}
+              onCompleted={() => setDemoCompleted(true)}
+            />
+          </div>
+        )}
 
         <div className="onboarding-progress" aria-live="polite">
           <span>
@@ -317,17 +303,17 @@ export function OnboardingDialog({
                 else setStep((value) => value + 1);
               }}
             >
-              {step >= totalSteps - 1 ? "稍后完成" : "跳过这一步"}
+              {step >= totalSteps - 1 ? "跳过演示" : "跳过这一步"}
             </button>
             <Button
               variant="primary"
-              disabled={busy}
+              disabled={busy || (step >= totalSteps - 1 && !demoCompleted)}
               onClick={() => {
                 if (step >= totalSteps - 1) onClose();
                 else setStep((value) => value + 1);
               }}
             >
-              {step >= totalSteps - 1 ? "进入 CC Panel" : "下一步"}
+              {step >= totalSteps - 1 ? "完成引导" : "下一步"}
               {step < totalSteps - 1 && (
                 <ChevronRight size={14} aria-hidden="true" />
               )}

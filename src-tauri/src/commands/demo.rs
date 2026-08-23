@@ -1,26 +1,24 @@
 use std::{fs, path::Path};
 
-use tauri::Manager;
-
 use crate::dto::{ApiError, ApiResult, DemoRunResult};
 
-const DEMO_DIRECTORY: &str = "demo-sandbox";
 const MAX_USER_ID_CHARS: usize = 48;
 const MAX_DEMO_BYTES: usize = 32 * 1024;
 
 #[tauri::command]
-pub fn run_demo_sandbox(user_id: String, app: tauri::AppHandle) -> ApiResult<DemoRunResult> {
+pub fn run_demo_sandbox(user_id: String, _app: tauri::AppHandle) -> ApiResult<DemoRunResult> {
     let safe_user_id = sanitize_demo_user_id(&user_id)?;
-    let app_data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| ApiError::new("DEMO_DIRECTORY_UNAVAILABLE", "无法准备演示沙盒目录。", true))?;
-    ensure_regular_directory(&app_data)?;
-    let demo_directory = app_data.join(DEMO_DIRECTORY);
-    ensure_regular_directory(&demo_directory)?;
+    let desktop = dirs::desktop_dir().ok_or_else(|| {
+        ApiError::new(
+            "DESKTOP_DIRECTORY_UNAVAILABLE",
+            "无法确定当前用户的桌面目录。",
+            true,
+        )
+    })?;
+    ensure_regular_directory(&desktop)?;
 
     let file_name = format!("hello_{safe_user_id}.html");
-    let file_path = demo_directory.join(&file_name);
+    let file_path = desktop.join(&file_name);
     if file_path.exists() {
         let metadata =
             fs::symlink_metadata(&file_path).map_err(|_| ApiError::io("inspect-demo-file"))?;
@@ -43,11 +41,11 @@ pub fn run_demo_sandbox(user_id: String, app: tauri::AppHandle) -> ApiResult<Dem
     }
     fs::write(&file_path, content.as_bytes()).map_err(|_| ApiError::io("write-demo-file"))?;
 
-    let relative_path = format!("{DEMO_DIRECTORY}/hello_{safe_user_id}.html");
+    let display_path = format!("桌面/hello_{safe_user_id}.html");
     Ok(DemoRunResult {
         user_id: safe_user_id,
         file_name,
-        relative_path,
+        display_path,
         content,
         created_at_ms: now_ms(),
     })
@@ -60,7 +58,7 @@ fn ensure_regular_directory(path: &Path) -> ApiResult<()> {
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
             return Err(ApiError::new(
                 "UNSAFE_DEMO_DIRECTORY",
-                "演示沙盒目录不是普通目录，已停止写入。",
+                "桌面目录不是普通目录，已停止写入。",
                 false,
             ));
         }
@@ -72,7 +70,7 @@ fn ensure_regular_directory(path: &Path) -> ApiResult<()> {
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(ApiError::new(
             "UNSAFE_DEMO_DIRECTORY",
-            "演示沙盒目录创建后检查失败。",
+            "桌面目录检查失败，已停止写入。",
             false,
         ));
     }

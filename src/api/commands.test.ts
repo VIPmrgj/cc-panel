@@ -147,7 +147,7 @@ describe("Tauri command contracts", () => {
     invokeMock.mockResolvedValue({
       userId: "小明",
       fileName: "hello_小明.html",
-      relativePath: "demo-sandbox/hello_小明.html",
+      displayPath: "桌面/hello_小明.html",
       content: "<html></html>",
       createdAtMs: 1,
     });

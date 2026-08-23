@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { ListChecks, PlayCircle, ShieldCheck } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { TASK_TEMPLATES, type TaskTemplate } from "./taskTemplates";
 
 interface Props {
   busy?: boolean;
   onRun: (template: TaskTemplate, details?: string) => void;
-  onOpenDemo: () => void;
 }
 
-export function TaskPanel({ busy = false, onRun, onOpenDemo }: Props) {
+export function TaskPanel({ busy = false, onRun }: Props) {
   const [details, setDetails] = useState<Record<string, string>>({});
   return (
     <section className="task-panel" aria-labelledby="task-panel-title">
@@ -19,24 +18,6 @@ export function TaskPanel({ busy = false, onRun, onOpenDemo }: Props) {
           <p className="task-panel__intro">
             这些是可直接开始的示例，也可以补充具体目标、报错或文件范围。
           </p>
-          <div className="task-demo-callout">
-            <ShieldCheck size={18} aria-hidden="true" />
-            <div>
-              <strong>没有 API Key？先体验演示模式</strong>
-              <p>
-                不调用模型、不读取真实项目，只在 CC Panel
-                沙盒里完成一个固定流程。
-              </p>
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={onOpenDemo}
-              >
-                <PlayCircle size={14} aria-hidden="true" />
-                开始沙盒演示
-              </button>
-            </div>
-          </div>
         </div>
       </div>
       <div className="task-list">
