@@ -611,7 +611,7 @@ dependencies = [
 
 [[package]]
 name = "cc-panel"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -635,6 +635,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
+ "tauri-plugin-single-instance",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -4747,6 +4748,22 @@ dependencies = [
  "thiserror 2.0.20",
  "time",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3214becf9ef5783c0ae99a3bb25adf5353a7a16ebf53e74b909e29205735c6c"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "windows-sys 0.60.2",
+ "zbus",
 ]
 
 [[package]]

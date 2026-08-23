@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import appIconUrl from "../../../src-tauri/icons/icon.png";
 
 export type ActivityId =
   | "chat"
@@ -50,7 +51,7 @@ export function ActivityRail({
   return (
     <nav className="activity-rail" aria-label="工作区">
       <div className="rail-brand" aria-label="CC Panel">
-        <span aria-hidden="true">CC</span>
+        <img className="rail-brand__icon" src={appIconUrl} alt="" />
       </div>
       <div className="rail-items">
         {activities.map(({ id, label, icon: Icon }) => {
