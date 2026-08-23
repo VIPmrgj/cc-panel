@@ -1,10 +1,10 @@
 use std::{
     fs::File,
-    io::Read,
+    io::{Cursor, Read},
     path::{Path, PathBuf},
 };
 
-use image::ImageReader;
+use image::{ImageFormat, ImageReader};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -84,7 +84,6 @@ pub fn import_paths(
                         .push(PendingSensitiveAttachment {
                             confirmation_token: record.handle.clone(),
                             name: record.name.clone(),
-                            path: record.path.clone(),
                             reason,
                             raw_bytes: record.raw_bytes,
                         });
@@ -94,7 +93,7 @@ pub fn import_paths(
                 snapshots.push(imported);
             }
             Err(error) => result.rejected.push(RejectedAttachment {
-                path: path.to_string_lossy().into_owned(),
+                name: safe_name(&path),
                 code: error.code,
                 message: error.message,
             }),
@@ -138,7 +137,7 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
     }
 
     let inferred = infer::get(&bytes);
-    let (kind, mime, content, width, height, warnings) = if inferred
+    let (kind, mime, content, width, height, warnings, preview_bytes) = if inferred
         .as_ref()
         .is_some_and(|kind| kind.mime_type() == "application/pdf")
         || bytes.starts_with(b"%PDF-")
@@ -174,6 +173,7 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
             None,
             None,
             Vec::new(),
+            None,
         )
     } else if inferred
         .as_ref()
@@ -203,8 +203,8 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
             .map(|kind| kind.mime_type().to_owned())
             .unwrap_or_else(|| "image/unknown".into());
         let note = format!(
-            "Image reference only. Local path: {}\nMIME: {}\nDimensions: {}x{}\nNo OCR or image bytes are embedded; a local Claude Code session may inspect this path if accessible.",
-            canonical.to_string_lossy(),
+            "Image attachment metadata only.\nName: {}\nMIME: {}\nDimensions: {}x{}\nNo OCR, image bytes, or native filesystem path is embedded.",
+            safe_name(&canonical),
             mime,
             image_width,
             image_height,
@@ -215,7 +215,8 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
             note,
             Some(image_width),
             Some(image_height),
-            vec!["图片只包含本地路径与元数据，不包含 OCR 或图片字节。".into()],
+            vec!["图片预览只在用户点击时传输缩略图；不会暴露本地路径。".into()],
+            Some(make_image_preview(&bytes)?),
         )
     } else {
         if raw_size > MAX_TEXT_FILE {
@@ -244,7 +245,15 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
             .as_ref()
             .map(|kind| kind.mime_type().to_owned())
             .unwrap_or_else(|| "text/plain".into());
-        (AttachmentKind::Text, mime, text, None, None, Vec::new())
+        (
+            AttachmentKind::Text,
+            mime,
+            text,
+            None,
+            None,
+            Vec::new(),
+            None,
+        )
     };
 
     let sha256 = hash_bytes(&bytes);
@@ -257,7 +266,6 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
     let record = AttachmentRecord {
         handle,
         name,
-        path: canonical.to_string_lossy().into_owned(),
         kind,
         mime,
         raw_bytes: raw_size,
@@ -269,10 +277,24 @@ fn import_one(path: &Path) -> Result<ImportedSnapshot, ApiError> {
     };
     Ok(ImportedSnapshot {
         sensitive_reason: sensitive_reason(&canonical),
-        snapshot: AttachmentSnapshot { record, content },
+        snapshot: AttachmentSnapshot {
+            record,
+            content,
+            preview_bytes,
+        },
     })
 }
 
+fn make_image_preview(bytes: &[u8]) -> Result<Vec<u8>, ApiError> {
+    let image = image::load_from_memory(bytes)
+        .map_err(|_| ApiError::new("IMAGE_INVALID", "无法生成图片预览。", false))?;
+    let thumbnail = image.thumbnail(1600, 1200);
+    let mut output = Cursor::new(Vec::new());
+    thumbnail
+        .write_to(&mut output, ImageFormat::Png)
+        .map_err(|_| ApiError::new("IMAGE_PREVIEW_FAILED", "无法生成图片预览。", false))?;
+    Ok(output.into_inner())
+}
 fn is_binary(bytes: &[u8]) -> bool {
     if bytes.is_empty() {
         return false;
@@ -288,9 +310,17 @@ fn hash_bytes(bytes: &[u8]) -> String {
     hex::encode(digest.finalize())
 }
 
+fn safe_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("attachment")
+        .to_owned()
+}
+
 fn rejection(path: &Path, code: &str, message: &str) -> RejectedAttachment {
     RejectedAttachment {
-        path: path.to_string_lossy().into_owned(),
+        name: safe_name(path),
         code: code.into(),
         message: message.into(),
     }

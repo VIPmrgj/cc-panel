@@ -1,27 +1,24 @@
 import { FolderPlus, TerminalSquare } from "lucide-react";
 import type {
   AppPreferences,
-  ModelStatus,
   SkillInventory,
   SkillOverrideSelection,
   SkillRecord,
 } from "../../api/dto";
+import type { SkillPanelMode } from "../skills/skillMode";
 import { Button } from "../common/Button";
-import { ModelControl } from "../models/ModelControl";
 import { SkillList } from "../skills/SkillList";
 
 interface Props {
   preferences: AppPreferences;
-  model: ModelStatus;
   inventory: SkillInventory;
   selectedIds: Set<string>;
   search: string;
-  modelSaving: boolean;
   skillsRefreshing: boolean;
   skillInventoryBusy: boolean;
+  skillMode: SkillPanelMode;
+  onSkillModeChange: (mode: SkillPanelMode) => void;
   onSearch: (value: string) => void;
-  onSaveModel: (model: string) => void;
-  onClearModel: () => void;
   onChooseProject: () => void;
   onAddRoot: () => void;
   onRefreshSkills: () => void;
@@ -35,16 +32,14 @@ interface Props {
 
 export function LeftSidebar({
   preferences,
-  model,
   inventory,
   selectedIds,
   search,
-  modelSaving,
   skillsRefreshing,
   skillInventoryBusy,
+  skillMode,
+  onSkillModeChange,
   onSearch,
-  onSaveModel,
-  onClearModel,
   onChooseProject,
   onAddRoot,
   onRefreshSkills,
@@ -82,18 +77,14 @@ export function LeftSidebar({
           <span className="sr-only">附加目录</span>
         </Button>
       </div>
-      <ModelControl
-        model={model}
-        saving={modelSaving}
-        onSave={onSaveModel}
-        onClear={onClearModel}
-      />
       <SkillList
         skills={inventory.skills}
         selectedIds={selectedIds}
         search={search}
         refreshing={skillsRefreshing}
         pending={skillInventoryBusy}
+        mode={skillMode}
+        onModeChange={onSkillModeChange}
         pluginWarning={inventory.pluginWarning}
         onSearch={onSearch}
         onRefresh={onRefreshSkills}

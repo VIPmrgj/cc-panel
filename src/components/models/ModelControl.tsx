@@ -20,6 +20,14 @@ export function ModelControl({ model, saving, onSave, onClear }: Props) {
     [model.desiredUserModel],
   );
 
+  // env 级别（settings.json 的 env 块或进程环境）的模型覆盖优先级高于顶层
+  // model，此时保存顶层 model 不会改变实际默认模型。
+  const envOverride =
+    model.candidates.find(
+      (candidate) =>
+        candidate.source === "user-env" || candidate.source === "process-env",
+    ) ?? null;
+
   return (
     <section className="sidebar-section" aria-labelledby={sectionTitleId}>
       <div className="section-heading">
@@ -80,6 +88,22 @@ export function ModelControl({ model, saving, onSave, onClear }: Props) {
             </div>
           ))}
         </div>
+      )}
+      {envOverride && (
+        <Notice tone="warning">
+          {model.desiredUserModel ? (
+            <>
+              上面的「{model.desiredUserModel}」会被覆盖候选「
+              {envOverride.label} ={envOverride.value}」取代，保存顶层 model
+              不会改变实际默认模型。
+            </>
+          ) : (
+            <>
+              未设置顶层 model；实际默认模型由「{envOverride.label} =
+              {envOverride.value}」决定。
+            </>
+          )}
+        </Notice>
       )}
       {model.warnings.map((warning) => (
         <Notice tone="warning" key={warning}>

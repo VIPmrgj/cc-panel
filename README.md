@@ -1,2 +1,130 @@
-# cc-panel
- 一、CC Panel 是什么    CC Panel 是一个运行在 Windows 桌面上的 Claude Code 本地控制面板。    它不是 Claude Code 的替代品，也不会自己启动 Claude 会话。它的定位是：    ▎ 把 Claude Code 原本分散在目录、设置文件、Skill、Ollama   ▎ 和附件处理流程，集中到一个可视化桌面界面里，并生成一份可以直接复制给 Claude Code 的完整 Prompt。    当前技术结构：    React 18 + TypeScript + Vite                │          Tauri invoke                │   Rust 后端                │   本地 Claude Code 文件 / Claude CLI / Ollama / Windows 剪贴板    所有敏感的文件读取、设置修改、Prompt 组合，都由 Rust 后端完成。浏览器端 React 不拥有任意文件系统访问、Shell   执行或网络请求能力。    ---   二、当前已经实现的功能    1. Skill 扫描和管理    支持的 Skill 来源    CC Panel 会扫描以下几类 Skill：    用户级 Skill    C:\Users\<用户名>\.claude\skills\<skill-name>\SKILL.md    当前项目 Skill    <项目根目录>\.claude\skills\<skill-name>\SKILL.md    附加 Skill 根    用户可以在 CC Panel 中登记一个附加目录，例如：    E:\WORK\some-project    CC Panel 会按照 Claude Code 的目录语义扫描：    E:\WORK\some-project\.claude\skills\<skill-name>\SKILL.md    已启用插件 Skill    CC Panel 不会自行扫描插件缓存或 marketplace，而是执行固定命令：    claude plugin list --json    只接受 CLI 明确返回的：    {     "enabled": true,     "installPath": "..."   }    然后读取：    <plugin-install-path>\skills\<skill-name>\SKILL.md    插件 Skill 的规范 ID 使用：    plugin-name:skill-name    这比简单扫描缓存目录更可靠，因为“插件存在”并不等于“插件已经启用”。    ---   2. 严格识别 SKILL.md    Skill 必须是一个独立目录：    skills/   └── example/       └── SKILL.md    当前实现遵守以下规则：    - 只扫描一层 Skill 目录。   - 文件名必须是精确的大写：   SKILL.md   - 不接受：   skill.md   Skill.md   SKILL.MD   - 不把扁平文件当成 Skill：   ~/.claude/skills/example.md   - 不递归读取 supporting resources。   - SKILL.md 最大 256 KiB。   - 文件路径会规范化，并检查是否仍然位于对应 Skill 根目录下。   - Skill 正文会计算 SHA-256 哈希。    Windows 文件系统本身大小写不敏感，所以实现不是简单地调用：    path.join("SKILL.md").is_file()    而是实际枚举目录，并检查目录项的文件名是否严格等于 SKILL.md，避免误把 skill.md 当成合法 Skill。    ---   3. Skill frontmatter 解析    CC Panel 会解析 SKILL.md 顶部的 YAML frontmatter，用于展示和判断调用能力。    主要支持字段包括：    ---   name: example   description: Example skill   user-invocable: true   disable-model-invocation: false   ---    frontmatter 解析失败时不会“猜测默认值”，而是 fail-closed：    - Skill 仍然可以在列表中显示。   - 但会标记错误。   - user_invocable 会设为 false。   - model_invocable 会设为 false。   - 不会因为解析失败而错误地开放调用权限。    如果 frontmatter 中的 name 与目录名不同，界面会显示警告，但运行时 ID 仍以目录名为准。    例如：    目录名：writing-helper   frontmatter name：writer    规范 ID 仍然是：    writing-helper    ---   4. 原生 skillOverrides 管理    CC Panel 使用 Claude Code 原生的 Skill 覆盖设置，而不是虚构一个 enabled: true/false 字段。    支持的状态：    on   name-only   user-invocable-only   off   继承 / 默认    对应含义：    ┌─────────────────────┬───────────────────────────────────────────────────────┐   │        状态         │                         含义                          │   ├─────────────────────┼───────────────────────────────────────────────────────┤   │ 继承 / 默认         │ 删除该 Skill 的 override，让 Claude Code 使用默认行为 │   ├─────────────────────┼───────────────────────────────────────────────────────┤   │ on                  │ 正常启用                                              │   ├─────────────────────┼───────────────────────────────────────────────────────┤   │ name-only           │ 只暴露名称，不完整加载内容                            │   ├─────────────────────┼───────────────────────────────────────────────────────┤   │ user-invocable-only │ 只允许用户显式调用                                    │   ├─────────────────────┼───────────────────────────────────────────────────────┤   │ off                 │ 关闭该 Skill                                          │   └─────────────────────┴───────────────────────────────────────────────────────┘    “恢复默认”不是写入一个多余的 on，而是删除对应的 skillOverrides key。    例如：    {     "skillOverrides": {       "writing-helper": "off"     }   }    恢复默认后会删除：    "writing-helper": "off"    而不是修改成：    "writing-helper": "on"    未知 override 的处理    如果设置里存在 CC Panel 不认识的值，例如：    {     "skillOverrides": {       "some-skill": "future-value"     }   }    CC Panel 不会自动覆盖它，也不会伪装成默认状态，而是：    - 原样显示未知值。   - 提供修复入口。   - 只有用户明确选择合法状态后才修改。    多来源冲突    如果用户级和项目级同时存在同名 Skill：    用户：example   项目：example    CC Panel 会全部保留并标记冲突，不自行宣称哪个一定会被 Claude Code 最终采用。    这是因为实际会话中的解析优先级可能还受到项目、插件、启动目录和 Claude Code 版本影响。    ---   5. 用户默认模型管理    CC Panel 修改的唯一全局模型文件是：    C:\Users\<用户名>\.claude\settings.json    修改的字段是顶层：    {     "model": "custom-model-id"   }    支持任意模型 ID    模型 ID 不限制为官方别名，可以保存：    deepseek-v4-pro   deepseek-v4-pro[1m]   custom/provider-model   my-local-model    只限制：    - 不为空。   - 不超过 512 字节。   - 不能包含控制字符。   - 不能有首尾空白。    不会泄露设置中的秘密    用户设置可能包含：    {     "env": {       "ANTHROPIC_AUTH_TOKEN": "...",       "ANTHROPIC_BASE_URL": "..."     }   }    CC Panel：    - 不把完整 settings.json 发给 React。   - 不把 env 返回给前端。   - 不把 token、endpoint 写入日志。   - 不修改无关字段。   - 只对顶层 model 做设置或删除。    三种模型概念会区分显示    界面不会把几个不同概念混在一起：    1. 期望的用户默认模型     - 来自用户设置文件顶层 model。   2. 检测到的覆盖候选     - 例如当前项目设置或明确的 ANTHROPIC_MODEL 字段。   3. 当前运行中的 Claude 会话实际模型     - CC Panel 无法观察，因此会明确显示“无法观察”。    原子修改和并发保护    设置写入使用：    - 应用级锁。   - revision/hash 乐观并发检查。   - 临时文件。   - flush/sync_all。   - Windows ReplaceFileW 或原子移动。   - 同目录替换。    如果 Claude Code 或其他程序在 CC Panel 读取之后修改了设置，CC Panel 会拒绝覆盖并提示刷新，而不是覆盖新内容。    ---   6. Ollama Prompt 增强    CC Panel 可以使用本地 Ollama 改写用户 Prompt，使其更清晰、具体、可执行。    默认地址：    http://localhost:11434    安全限制    只接受本机 HTTP 回环地址：    http://localhost:11434   http://127.0.0.1:11434   http://[::1]:11434    拒绝：    https://...   http://example.com:11434   http://localhost:11434/api   http://user:password@localhost:11434    同时：    - 禁用 HTTP 重定向。   - 禁用系统代理，避免 Prompt 被代理转发。   - 不允许 URL 中包含路径、query 或 fragment。   - 请求由 Rust reqwest 发起。   - React 不直接请求 Ollama。    状态检查    使用：    GET /api/tags    可以检测：    - Ollama 是否在线。   - 已安装模型。   - 当前保存的模型是否仍然存在。   - 如果保存的模型不存在，是否自动选择第一个可用模型。   - 是否没有安装模型。    Prompt 增强请求    使用：    POST /api/generate    并设置：    {     "stream": false   }    发送给 Ollama 的内容只有：    用户原始 Prompt    不会发送：    - Skill 正文。   - 附件正文。   - Claude 设置。   - token。   - 本地环境变量。    原文永远保留    增强结果不会覆盖原 Prompt。    界面中会同时保留：    原始 Prompt   Ollama 增强候选    用户可以选择最终使用哪个版本。    如果 Ollama：    - 未启动。   - 没有模型。   - 超时。   - 返回畸形 JSON。   - 返回过大的响应。   - 连接失败。    CC Panel 会保留并使用原始 Prompt，而不是清空内容或假装增强成功。    并发限制    同时只允许一个 Ollama 增强任务。已有任务运行时，新的请求会收到：    OLLAMA_BUSY    避免用户连续点击造成多个本地模型请求并行堆积。    ---   7. 附件导入    支持通过文件选择器和拖放导入附件，并且两种入口最终都走同一条 Rust 导入管线。    支持的类型    UTF-8 文本和源码    - 允许 UTF-8。   - 支持 UTF-8 BOM。   - 非法 UTF-8 拒绝。   - 检测疑似二进制文件并拒绝。    PDF    - 使用 pdf_extract 提取文本。   - 只支持文本层提取。   - 扫描型 PDF 不做 OCR。   - 加密、损坏或没有文本的 PDF 会提示失败。    图片    图片不会被转成 Base64，也不会被上传给 Ollama。    图片贡献的内容是：    - 规范化本地路径。   - MIME 类型。   - 图片宽度。   - 图片高度。   - SHA-256。   - 无 OCR、无图片字节嵌入的说明。    最终 Prompt 中类似：    Image reference only.   Local path: C:\...\image.png   MIME: image/png   Dimensions: 1920x1080   No OCR or image bytes are embedded.    附件限制    当前设定：    ┌───────────────────┬───────────┐   │       限制        │   上限    │   ├───────────────────┼───────────┤   │ 附件数量          │     10 个 │   ├───────────────────┼───────────┤   │ 原始附件总大小    │    40 MiB │   ├───────────────────┼───────────┤   │ 单个文本/源码文件 │     2 MiB │   ├───────────────────┼───────────┤   │ 单个 PDF          │    15 MiB │   ├───────────────────┼───────────┤   │ 单个图片          │    15 MiB │   ├───────────────────┼───────────┤   │ 单个 PDF 提取文本 │     1 MiB │   ├───────────────────┼───────────┤   │ 提取文本总量      │     2 MiB │   ├───────────────────┼───────────┤   │ 图片单边尺寸      │ 12,000 px │   ├───────────────────┼───────────┤   │ 图片总像素        │     25 MP │   └───────────────────┴───────────┘    不会静默截断内容。超过限制时会拒绝并给出错误。    敏感文件二次确认    以下类型或路径会触发二次确认：    .env   .env.local   .ssh   credentials   secrets   .pem   .key   .p12   .pfx    敏感附件先进入待确认状态，不会直接进入最终 Prompt。    确认令牌绑定：    - 已读取的文件快照。   - 附件句柄。   - 短期有效期。    这样可以避免“用户确认了 A 文件，但文件路径后来被替换成 B 文件”的简单 TOCTOU 问题。    正文存储方式    附件正文只在 Rust 进程内存中保存。    React 只拿到：    - UUID handle。   - 文件名。   - 本地路径。   - 类型。   - MIME。   - 字节数。   - 哈希。   - 图片尺寸。   - 警告。    应用不会把附件正文写入 localStorage、配置文件或磁盘缓存。    ---   8. Prompt 确定性组合    最终 Prompt 完全由 Rust 后端生成，不由前端拼字符串。    基本结构：    <cc-panel-prompt version="1">     <selected-skills>       <skill id="..." source="..." instance="...">         ...       </skill>     </selected-skills>     <user-prompt variant="original">       ...     </user-prompt>     <attachments>       <attachment index="1" kind="text" ...>         ...       </attachment>     </attachments>   </cc-panel-prompt>    组合特点    - Skill 使用完整 SKILL.md，不是只取预览。   - Skill 按规范 ID、来源、实例 ID 稳定排序。   - 附件保留用户导入顺序。   - Prompt 和属性都做 XML 转义。   - XML 1.0 非法控制字符替换为 U+FFFD。   - 组合前会重新检查 Skill 文件是否发生变化。   - Skill hash 过期时要求刷新。   - 组合结果具有确定性，不包含时间戳和随机数据。   - 最终结果计算 SHA-256 composition ID。    组合限制    ┌─────────────────┬─────────┐   │      限制       │  上限   │   ├─────────────────┼─────────┤   │ 选中 Skill 数量 │   12 个 │   ├─────────────────┼─────────┤   │ Skill 正文总量  │   1 MiB │   ├─────────────────┼─────────┤   │ 用户 Prompt     │ 128 KiB │   ├─────────────────┼─────────┤   │ 最终 Prompt     │   4 MiB │   └─────────────────┴─────────┘    Preview 和 Copy 的区别    预览和复制都调用后端重新组合。    尤其是复制时不会直接复制旧的预览缓存，而是：    1. 读取当前 Prompt。   2. 读取当前所选 Skill。   3. 读取当前附件。   4. 重新验证哈希和限制。   5. 生成最终 Prompt。   6. 写入系统剪贴板。    这样可以防止用户预览之后又修改了 Prompt，最后复制到旧内容。    ---   9. 剪贴板和快捷键    主操作是：    复制最终 Prompt    快捷键：    Ctrl + Enter    快捷键和复制按钮走同一条后端组合路径。    以下情况会忽略快捷键：    - 正在输入法组合状态。   - 已经有复制任务进行中。   - Ctrl 没有按下。   - 按键事件不是 Enter。    复制成功后，界面会通过：    aria-live="polite"    报告状态，不抢走用户焦点。    ---   10. 原生通知    原生通知默认关闭。    只有用户主动开启，并且系统授权成功后，CC Panel 才发送通知。    通知失败不会把已经成功的剪贴板复制标记为失败。    也就是说：    复制成功 + 通知失败    最终状态仍然是：    复制成功    同时额外提示通知不可用。    ---   11. 三栏桌面界面    界面采用 GitHub / VS Code 风格的高密度暗色布局。    宽屏布局：    240px 左栏 | 中间编辑区 | 320px 右栏    左栏：配置和 Skill    包括：    - CC Panel 标识。   - 用户默认模型。   - 模型覆盖候选。   - 项目根目录。   - 附加 Skill 根。   - Skill 搜索。   - Skill 刷新。   - Skill 来源分组。   - Skill 冲突警告。   - Skill 调用限制。   - Skill override 控制。    中栏：Prompt 工作区    包括：    - 已选 Skill chip。   - Prompt 编辑器。   - 原始/增强 Prompt 切换。   - Ollama 状态。   - Ollama 模型选择。   - 增强按钮。   - 添加附件。   - 预览按钮。   - 复制最终 Prompt。   - Ctrl+Enter 快捷键提示。    右栏：附件和状态    包括：    - 附件列表。   - 附件删除。   - 附件上移/下移。   - 附件类型和大小。   - Preview。   - 组合过期提示。   - Ollama 状态。   - 设置冲突提示。   - /reload-plugins 或重启提醒。   - 字符数。   - UTF-8 字节数。   - 行数。   - Skill 数量。   - 附件数量。    不会伪造 token 数，因为没有实际调用 tokenizer。    响应式布局    ┌────────────┬────────────────────────────────────┐   │  窗口宽度  │                行为                │   ├────────────┼────────────────────────────────────┤   │ ≥ 1100px   │ 三栏同时显示                       │   ├────────────┼────────────────────────────────────┤   │ 840–1099px │ 右栏改为抽屉                       │   ├────────────┼────────────────────────────────────┤   │ < 840px    │ 左右两侧都改为抽屉，中间编辑区优先 │   └────────────┴────────────────────────────────────┘    抽屉支持：    - Escape 关闭。   - 焦点陷阱。   - 关闭后焦点恢复。   - 键盘操作。   - 可见关闭按钮。   - reduced motion。    ---   三、安全模型    1. Rust 才能访问本地资源    React 不提供以下能力：    - 任意读文件。   - 任意写文件。   - 任意执行 Shell。   - 任意启动进程。   - 任意请求网络。   - 任意读取环境变量。    Rust 只暴露有限的 Tauri command，例如：    refresh_skills   set_skill_override   get_model_status   set_user_model   get_ollama_status   enhance_prompt   import_attachments   compose_prompt   compose_and_copy    没有开放类似下面的危险通用接口：    read_file(path)   write_file(path, content)   run_command(command)   fetch_url(url)   set_config(key, value)    2. 禁止修改的内容    CC Panel 不修改：    ~/.cc-switch   ~/.claude.json   ~/.claude/settings.deepseek.json   ~/.claude/settings.glm.json    也不修改：    - 项目设置。   - 插件 registry。   - 插件 marketplace cache。   - provider snapshots。   - Skill 目录。   - SKILL.md 正文。   - Claude 会话上下文。   - Prompt 持久化文件。   - 附件正文缓存。    3. 内容不写盘    以下内容只在内存中存在：    - 原始 Prompt。   - Ollama 增强 Prompt。   - 附件正文。   - 最终组合 Prompt。   - PDF 提取文本。    应用重启后不会恢复这些内容。    ---   四、已经完成并验证的内容    前端验证    已经通过：    npm run lint   npm run typecheck   npm run test:run   npm run build:web    结果：    9 个测试文件   16/16 测试通过   Vite production build 成功    Rust 验证    已经通过：    cargo fmt --check   cargo check --all-targets   cargo test --all-features   cargo clippy --all-targets --all-features -- -D warnings    结果：    13/13 Rust 测试通过   Doc tests 通过   Clippy 零警告    Tauri 验证    已经完成：    npm run tauri dev   npm run tauri build    debug 版本实际启动过：    target\debug\cc-panel.exe    release 版本实际编译完成：    target\release\cc-panel.exe    安装包    NSIS：    E:\WORK\tools\cc-panel\src-tauri\target\release\bundle\nsis\CC Panel_0.1.0_x64-setup.exe    MSI：    E:\WORK\tools\cc-panel\src-tauri\target\release\bundle\msi\CC Panel_0.1.0_x64_en-US.msi    npm 依赖安全    使用 npm 官方 registry 检查：    Production dependencies：0 vulnerabilities   全部 dependencies：0 vulnerabilities    ---   五、当前待办事项    可以分成三类：    1. 安全和稳定性强化   2. 人工交互验收   3. 发布工程完善    ---   A. 高优先级：PDF 解析安全强化    这是目前最明确的后端待办。    当前 PDF 处理方式是：    pdf_extract::extract_text_from_mem(&bytes)    虽然有：    - PDF 文件大小限制。   - 单 PDF 提取文本限制。   - 总提取文本限制。   - 空文本检查。    但仍存在几个问题：    1. 解析发生在主进程    如果遇到恶意或极端 PDF，解析可能占用桌面应用主进程。    可能导致：    - UI 卡顿。   - Rust command 长时间不返回。   - 内存占用过高。    2. 尚未实现解析超时    目前没有真正的 PDF worker 超时机制。    3. 尚未实现 50 页硬限制    设计目标中计划限制：    最多 50 页    当前还没有完整实现。    4. 防 PDF 解压炸弹能力有限    PDF   可以通过压缩结构构造出远大于文件本身的解压内容。当前“文件大小”和“最终文本大小”限制不能完全替代解析过程中的资源限制。    建议方案    后续可以改成：    主进程     │     └── 启动受限 PDF worker             │             ├── 超时             ├── 输出上限             ├── 页数上限             └── 崩溃隔离    Windows 上进一步可以使用 Job Object 约束：    - 最大内存。   - CPU 时间。   - 子进程树。   - 句柄生命周期。    这是最值得优先处理的安全待办。    ---   B. 高优先级：附件总配额并发竞态    当前状态中有两个独立的 mutex：    attachments   pending_attachments    导入流程存在这样的潜在竞态：    导入任务 A 读取当前总量   导入任务 B 读取当前总量   A 判断还没超过限制   B 判断还没超过限制   A 写入   B 写入    在极端并发导入时，可能短暂越过：    - 10 个附件限制。   - 40 MiB 原始总量限制。   - 2 MiB 提取文本总量限制。    建议方案    增加统一的附件状态锁：    struct AttachmentStore {       active: HashMap<...>,       pending: HashMap<...>,       reserved_raw_bytes: usize,       reserved_extracted_bytes: usize,   }    把“检查配额”和“预留配额”放在同一把锁里完成。    导入成功后确认预留，导入失败后释放预留。    ---   C. 中高优先级：插件 CLI 输出内存上限    当前插件查询使用：    child.wait_with_output()    之后才检查：    output.stdout.len() > 2 MiB    这意味着理论上 Claude CLI 可以先输出超过 2 MiB，完整内容已经进入内存后，程序才拒绝它。    建议方案    改为：    - 异步读取 stdout。   - 读取到 2 MiB + 1 字节立即终止进程。   - 对 stderr 也设置上限或直接丢弃。   - 保留整体超时。    这样“输出上限”才是真正的流式上限，而不是事后检查。    ---   D. 中优先级：设置文件的读取 TOCTOU    当前设置事务已经有：    - revision/hash。   - 锁。   - 原子替换。   - 替换前二次 revision 检查。    但在读取时仍存在“先 metadata，再 open/read”的时间窗口：    metadata = fs::metadata(path)   File::open(path)   read(...)    如果文件在这两个步骤之间被替换，预分配大小和实际文件可能不一致。    这不容易导致覆盖错误，因为之后还有 revision 检查，但仍可以进一步收紧。    建议方案    像附件导入一样：    1. 先打开文件。   2. 从同一个 file handle 获取 metadata。   3. 从同一个 handle 读取。   4. 根据实际读取字节数计算 revision。   5. Windows 下进一步读取文件身份信息。    项目设置检查也可以采用相同策略。    ---   E. 中优先级：项目设置文件读取竞态    检测项目模型覆盖时，可能读取：    <project-root>\.claude\settings.json   <project-root>\.claude\settings.local.json    当前主要目标是“只读取有限字段，不泄露完整设置”。    后续仍可以加强：    - 文件句柄绑定读取。   - 更严格的路径和 reparse point 检查。   - 文件大小和身份变化检测。   - 明确区分“文件不存在”和“读取失败”。    ---   F. 中优先级：开发环境动态 CSP    当前 dev CSP 已允许：    http://localhost:1420   ws://localhost:1421    这可以覆盖默认本地开发环境。    但如果通过 Tauri 的：    TAURI_DEV_HOST    使用其他开发主机地址，动态 HMR host 可能不在 CSP 允许列表中。    建议方案    开发模式下根据可信的 TAURI_DEV_HOST 生成 CSP，或者明确记录远程开发主机配置要求。    生产 CSP 当前仍然限制为本地资源，不应为了开发方便而放宽生产策略。    ---   G. 必须人工做的 UI 验收    自动化测试不能完全替代真实窗口验收。    建议实际安装后检查：    窗口尺寸    1280px   1024px   839px   720px    观察：    - 三栏是否合理。   - 抽屉是否正确切换。   - 是否出现横向滚动。   - Prompt 编辑区是否仍可用。    缩放    检查：    100%   150%   200%    重点观察：    - 文本是否被裁切。   - 按钮是否被挤出窗口。   - 抽屉焦点是否正常。   - 状态栏是否溢出。    键盘操作    只使用键盘完成：    - 打开和关闭抽屉。   - 切换 Skill。   - 修改 override。   - 进入 Prompt。   - 添加附件。   - 调整附件顺序。   - 预览。   - Ctrl+Enter 复制。   - Escape 关闭弹窗。    屏幕阅读器    至少做一次 Windows Narrator 或 NVDA 冒烟：    - 按钮名称是否可理解。   - 图标按钮是否有 aria-label。   - 成功和错误状态是否能读到。   - Drawer 是否声明为 dialog。   - 敏感文件确认是否能正确朗读。    reduced motion    在 Windows 中启用减少动态效果，确认：    - 抽屉没有过度动画。   - 状态切换不会造成晃动。   - 不影响操作完成。    ---   H. 必须人工做的功能验收    Skill    - 用户级 Skill。   - 项目级 Skill。   - 附加根。   - 插件 CLI 不可用。   - SKILL.md 与 skill.md 混合存在。   - frontmatter 缺失。   - frontmatter 损坏。   - 同名 Skill 冲突。   - unknown override 修复。   - 修改后提示 /reload-plugins。    模型设置    - 自定义模型 ID。   - 清空模型。   - 外部进程同时修改 settings.json。   - 设置文件 JSON 损坏。   - 设置里包含 secret env。   - 确认 CC Panel 没有把 secret 显示到 UI 或日志。    Ollama    - Ollama 未安装。   - Ollama 未运行。   - Ollama 在线但没有模型。   - 保存的模型已经被删除。   - 正常增强。   - 增强超时。   - 增强返回无效内容。   - 连续点击增强按钮。   - 确认 Skill 和附件没有被发送给 Ollama。    附件    - UTF-8 文本。   - UTF-8 BOM 文本。   - 非 UTF-8 文本。   - 二进制文件。   - 文本型 PDF。   - 扫描型 PDF。   - 加密 PDF。   - 超大 PDF。   - 普通图片。   - 超大图片。   - .env。   - .ssh。   - 私钥文件。   - 拖放附件。   - 敏感附件取消确认。   - 敏感附件确认后文件被替换。    复制    - 预览后修改 Prompt，再点击复制。   - 预览后修改 Skill。   - 预览后删除附件。   - 系统剪贴板被其他程序占用。   - 通知权限关闭但剪贴板正常复制。    ---   I. 发布完善    1. 代码签名    当前安装包没有代码签名，所以 Windows 可能显示：    Windows 已保护你的电脑   未知发布者    正式分发前建议使用代码签名证书签名：    - cc-panel.exe   - NSIS 安装包   - MSI 安装包    2. 版本策略    当前版本：    0.1.0    后续需要确定：    - 版本号规则。   - 数据配置兼容策略。   - schemaVersion 升级方式。   - 升级时是否保留用户登记的附加根。   - 是否支持回滚。    3. 安装包测试    需要在干净 Windows 环境测试：    - NSIS 安装。   - MSI 安装。   - 卸载。   - 重装。   - 快捷方式。   - 安装目录权限。   - WebView2 缺失或版本过旧。   - 非管理员账户运行。    4. 发布渠道    当前没有实现：    - 自动更新。   - 内置更新检查。   - 云端发布。   - 遥测。   - 崩溃上报。    这些目前是明确排除项，不是隐藏缺陷。    ---   六、当前明确不支持的功能    以下内容不是当前待办，而是首版主动排除的范围：    - 不启动 Claude Code 会话。   - 不控制 Claude Code 对话。   - 不读取当前 Claude 会话的实际模型。   - 不联网搜索。   - 不做网页抓取。   - 不做 OCR。   - 不把图片上传到模型。   - 不把图片 Base64 嵌入 Prompt。   - 不递归读取 Skill supporting resources。   - 不修改 SKILL.md。   - 不修改项目设置。   - 不做整插件启停。   - 不修改 .cc-switch。   - 不修改 .claude.json。   - 不修改 provider snapshot。   - 不上传数据到云端。   - 不做遥测。   - 不自动更新。   - 不保存 Prompt 和附件正文。
+# CC Panel
+
+CC Panel 是运行在 Windows 上的 Claude Code 本地图形控制面板。它包装本机已安装的官方 `claude` CLI，不重写 Claude 的 agent loop；React 负责交互展示，Rust 负责进程、文件、网络、环境变量、密钥、Skill、附件和 Prompt 组合。
+
+> 安全边界：**React 无文件/Shell/网络访问、内容不写盘**。
+
+## 当前能力
+
+### Claude Code 会话
+
+- 新建、恢复、继续、重试和分叉会话。
+- 使用长驻 NDJSON stdin/stdout 与官方 CLI 通信。
+- 增量显示 Claude 输出、工具调用、工具结果，以及 CLI 实际发出的 thinking/summary。
+- 工具权限在界面中逐次显示，用户明确选择“允许”或“拒绝”；默认不使用 `bypassPermissions` 或 blanket `dontAsk`。
+- 支持软中断、停止、30 分钟 active-turn 超时、输出上限和 Windows Job Object 进程树清理。
+- 同一时间最多一个 Claude 子进程和一个 active turn。
+
+所有受管会话启动路径都包含且只包含一次：
+
+```text
+--autocompact 272k
+```
+
+界面显示配置策略：`Auto-compact: 272k`。只有收到可信的 `PreCompact`/`compact_boundary` 记录后，才会显示实际压缩状态；仅设置启动参数不等于压缩已经发生。
+
+### 对话历史和模型切换
+
+- Claude 自己的 session JSONL 是 transcript 的唯一真相来源。
+- CC Panel 的 `~/.cc-panel/conversations.json` 只保存有界元数据，不保存 Prompt、回复、thinking、工具结果或附件正文。
+- 切换提供商/模型会停止当前子进程并使用 `--fork-session` 创建新会话，旧会话保持不变。
+- v1 仅支持 Anthropic-compatible provider，不提供 OpenAI 协议翻译代理。
+
+### Provider profiles
+
+- Provider、Base URL、model ID 和备注由 CC Panel 管理。
+- API key 使用 Windows DPAPI CurrentUser 保护后再写入 `~/.cc-panel/models.json`。
+- token 不返回 React，不出现在日志、错误、诊断、会话元数据或 stream DTO 中。
+- URL 默认要求 HTTPS；仅回环地址可使用 HTTP；拒绝 URL credential、query 和 fragment。
+
+### Skills、附件和 Prompt
+
+- 扫描用户、项目、附加根和已启用插件的 `SKILL.md`。
+- 管理 Claude 原生 `skillOverrides`：`on`、`name-only`、`user-invocable-only`、`off` 和继承默认。
+- 附件通过 Rust 导入；正文仅保存在 Rust 内存，React 只获得句柄和安全元数据。
+- `.env`、私钥和凭据类附件需要二次确认。
+- Preview、Copy 和 Send 共用同一个 Rust 确定性组合器，包括 Skill hash、附件句柄、排序、XML 转义和大小限制。
+- Ollama 只接收当前原始草稿，不接收 Skill 正文、附件正文、设置或 token；增强结果不会覆盖原文。
+
+### 桌面界面
+
+```text
+52px activity rail | clamp(240px, 20vw, 360px) context panel | flexible chat
+```
+
+活动栏包含聊天、Skills、模型、附件和设置。聊天区包含 Markdown transcript、可折叠工具卡、thinking 卡、权限卡和可纵向调整的 composer。
+
+- `Ctrl+Enter`：发送
+- `Enter`：换行
+- Markdown：`react-markdown` + `rehype-highlight`
+- 不启用 `rehype-raw`，不渲染不安全原始 HTML
+- 弹窗提供焦点陷阱、Escape 关闭和焦点恢复
+- 支持 reduced motion 和窄窗口侧栏覆盖模式
+
+## 技术结构
+
+```text
+React 18 + TypeScript + Vite
+              │ typed Tauri commands + Channel events
+Tauri 2 / Rust
+              │
+official claude CLI · Claude JSONL · Ollama · local files
+```
+
+主要子系统：
+
+- `src-tauri/src/sessions/`：安全启动、NDJSON 协议、生命周期、权限、历史和 Windows Job Object。
+- `src-tauri/src/model_profiles/`：provider profile 验证、DPAPI 和 masked DTO。
+- `src-tauri/src/conversations/`：metadata-only 索引。
+- `src-tauri/src/prompt/`：Preview/Copy/Send 共用的确定性组合。
+- `src/state/chatReducer.ts` 与 `composerReducer.ts`：对话状态和下一轮草稿状态相互独立。
+
+## 开发与验证
+
+要求 Node.js/npm、Rust 1.88+、Windows WebView2，以及可在 `PATH` 中运行的官方 `claude` CLI。
+
+```bash
+npm install
+npm run tauri dev
+```
+
+前端检查：
+
+```bash
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test:run
+npm run build:web
+```
+
+Rust 检查（在 `src-tauri`）：
+
+```bash
+cargo fmt --check
+cargo check --all-targets
+cargo test --all-features
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+当前自动化基线：前端 11 个测试文件、33 个测试；Rust 62 个测试。Vite 生产构建成功，但主 JS chunk 仍会触发大于 500 kB 的非致命警告。
+
+## 手工验收清单
+
+发布前仍应在真实窗口和已认证 CLI 上检查：
+
+1. 新建、Resume、Continue、Retry 和模型切换 Fork 的 session identity。
+2. 增量文字、工具调用/结果，以及 thinking 仅在 CLI 发出时出现。
+3. 权限 Allow/Deny、停止、超时、窗口关闭和整个进程树退出。
+4. Claude JSONL 历史重建且 CC Panel 不创建消息正文副本。
+5. UI 始终显示 `Auto-compact: 272k`，但不伪造压缩完成事件。
+6. 1280、1024、839、720 px，以及 100–200% 缩放、键盘、Narrator/NVDA、reduced motion。
+7. Provider token、附件正文和 Skill 正文不出现在 React DTO、日志、错误和元数据中。
+
+## 已知后续工作
+
+- 对真实已认证 Claude CLI 做完整 GUI round-trip 冒烟。
+- 为 stream normalizer、fork identity、权限交互和应用退出增加更深的集成测试。
+- 对主前端 bundle 做代码分割。
+- PDF 解析目前仍在主进程中；后续可用受限 worker 隔离解析超时、内存和页数。
+- 发布前完成代码签名、干净 Windows 安装/卸载测试和正式安装包验证。

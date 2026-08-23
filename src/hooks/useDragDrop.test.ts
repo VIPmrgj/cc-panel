@@ -3,25 +3,25 @@ import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDragDrop } from "./useDragDrop";
 
-const webviewMocks = vi.hoisted(() => ({
-  onDragDropEvent: vi.fn(),
+const eventMocks = vi.hoisted(() => ({
+  listen: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/webview", () => ({
-  getCurrentWebview: () => webviewMocks,
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: eventMocks.listen,
 }));
+
+type DropEvent = { payload: { grant: unknown } };
 
 describe("useDragDrop", () => {
   beforeEach(() => {
-    webviewMocks.onDragDropEvent.mockReset();
+    eventMocks.listen.mockReset();
   });
 
   it("uses the latest handler without resubscribing", async () => {
-    let listener:
-      | ((event: { payload: { type: "drop"; paths: string[] } }) => void)
-      | undefined;
+    let listener: ((event: DropEvent) => void) | undefined;
     const dispose = vi.fn();
-    webviewMocks.onDragDropEvent.mockImplementation((handler) => {
+    eventMocks.listen.mockImplementation((_name, handler) => {
       listener = handler;
       return Promise.resolve(dispose);
     });
@@ -34,11 +34,15 @@ describe("useDragDrop", () => {
 
     await act(async () => Promise.resolve());
     rerender({ handler: second });
-    act(() => listener?.({ payload: { type: "drop", paths: ["a.txt"] } }));
+    act(() => listener?.({ payload: { grant: "grant-1" } }));
 
     expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledWith(["a.txt"]);
-    expect(webviewMocks.onDragDropEvent).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledWith({ grant: "grant-1" });
+    expect(eventMocks.listen).toHaveBeenCalledWith(
+      "cc-panel://attachment-drop",
+      expect.any(Function),
+    );
+    expect(eventMocks.listen).toHaveBeenCalledTimes(1);
     unmount();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
@@ -46,7 +50,7 @@ describe("useDragDrop", () => {
   it("disposes a listener that resolves after unmount", async () => {
     let resolveListener: ((dispose: () => void) => void) | undefined;
     const dispose = vi.fn();
-    webviewMocks.onDragDropEvent.mockReturnValue(
+    eventMocks.listen.mockReturnValue(
       new Promise<() => void>((resolve) => {
         resolveListener = resolve;
       }),
@@ -60,5 +64,24 @@ describe("useDragDrop", () => {
     });
 
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores malformed native drop events", async () => {
+    let listener: ((event: DropEvent) => void) | undefined;
+    eventMocks.listen.mockImplementation((_name, handler) => {
+      listener = handler;
+      return Promise.resolve(vi.fn());
+    });
+    const onDrop = vi.fn();
+    renderHook(() => useDragDrop(onDrop));
+    await act(async () => Promise.resolve());
+
+    act(() => {
+      listener?.({ payload: { grant: "" } });
+      listener?.({ payload: { grant: "   " } });
+      listener?.({ payload: { grant: null } });
+    });
+
+    expect(onDrop).not.toHaveBeenCalled();
   });
 });

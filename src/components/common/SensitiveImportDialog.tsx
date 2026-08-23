@@ -92,7 +92,7 @@ export function SensitiveImportDialog({
         <FileWarning size={24} aria-hidden="true" />
         <h2 id={titleId}>确认导入敏感文件</h2>
         <p id={descriptionId}>{attachment.reason}</p>
-        <code>{attachment.path}</code>
+        <code>{attachment.name}</code>
         <Notice tone="warning">
           <AlertTriangle size={14} aria-hidden="true" />
           文件内容会进入最终 Prompt 和系统剪贴板，但不会持久化。

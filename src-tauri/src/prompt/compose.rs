@@ -1,7 +1,10 @@
 use sha2::{Digest, Sha256};
 
 use crate::{
-    dto::{ApiError, ApiResult, AttachmentKind, CompositionResult, SkillRecord},
+    dto::{
+        ApiError, ApiResult, AttachmentKind, CompositionResult, ProjectMemory, SkillOverrideState,
+        SkillRecord,
+    },
     state::AttachmentSnapshot,
 };
 
@@ -21,6 +24,24 @@ pub fn compose_prompt(
     original_prompt: &str,
     enhanced_prompt: Option<&str>,
     use_enhanced: bool,
+    skills: Vec<CompositionSkill>,
+    attachments: &[&AttachmentSnapshot],
+) -> ApiResult<CompositionResult> {
+    compose_prompt_with_memory(
+        original_prompt,
+        enhanced_prompt,
+        use_enhanced,
+        None,
+        skills,
+        attachments,
+    )
+}
+
+pub fn compose_prompt_with_memory(
+    original_prompt: &str,
+    enhanced_prompt: Option<&str>,
+    use_enhanced: bool,
+    project_memory: Option<&ProjectMemory>,
     mut skills: Vec<CompositionSkill>,
     attachments: &[&AttachmentSnapshot],
 ) -> ApiResult<CompositionResult> {
@@ -45,7 +66,11 @@ pub fn compose_prompt(
             false,
         ));
     }
-    let skill_bytes: usize = skills.iter().map(|skill| skill.manifest.len()).sum();
+    let skill_bytes: usize = skills
+        .iter()
+        .filter(|skill| !matches!(skill.record.override_state, SkillOverrideState::NameOnly))
+        .map(|skill| skill.manifest.len())
+        .sum();
     if skill_bytes > MAX_SKILL_BYTES {
         return Err(ApiError::new(
             "SKILL_CONTENT_TOO_LARGE",
@@ -77,19 +102,58 @@ pub fn compose_prompt(
     output.push_str("<cc-panel-prompt version=\"1\">\n");
     output.push_str("  <selected-skills>\n");
     for skill in &skills {
-        output.push_str("    <skill id=\"");
+        let name_only = matches!(skill.record.override_state, SkillOverrideState::NameOnly);
+        output.push_str("    <skill id=");
+        output.push('"');
         output.push_str(&escape_attribute(&skill.record.canonical_id));
-        output.push_str("\" source=\"");
+        output.push('"');
+        output.push_str(" source=");
+        output.push('"');
         output.push_str(&escape_attribute(
             &format!("{:?}", skill.record.source).to_ascii_lowercase(),
         ));
-        output.push_str("\" instance=\"");
+        output.push('"');
+        output.push_str(" instance=");
+        output.push('"');
         output.push_str(&escape_attribute(&skill.record.instance_id));
-        output.push_str("\">\n");
-        output.push_str(&indent_data(&escape_text(&skill.manifest), 6));
-        output.push_str("\n    </skill>\n");
+        output.push('"');
+        if name_only {
+            output.push_str(" />");
+            output.push('\n');
+        } else {
+            output.push('>');
+            output.push('\n');
+            output.push_str(&indent_data(&escape_text(&skill.manifest), 6));
+            output.push_str("    </skill>");
+            output.push('\n');
+        }
     }
     output.push_str("  </selected-skills>\n");
+    if let Some(memory) = project_memory.filter(|memory| memory.enabled) {
+        let fields = [
+            ("purpose", memory.purpose.as_str()),
+            ("tech-stack", memory.tech_stack.as_str()),
+            ("rules", memory.rules.as_str()),
+            ("avoid", memory.avoid.as_str()),
+            ("test-command", memory.test_command.as_str()),
+            ("preferred-language", memory.preferred_language.as_str()),
+        ];
+        if fields.iter().any(|(_, value)| !value.trim().is_empty()) {
+            output.push_str("  <project-memory>\n");
+            for (name, value) in fields {
+                if !value.trim().is_empty() {
+                    output.push_str("    <");
+                    output.push_str(name);
+                    output.push('>');
+                    output.push_str(&indent_data(&escape_text(value), 6));
+                    output.push_str("</");
+                    output.push_str(name);
+                    output.push_str(">\n");
+                }
+            }
+            output.push_str("  </project-memory>\n");
+        }
+    }
     output.push_str("  <user-prompt variant=\"");
     output.push_str(prompt_variant);
     output.push_str("\">\n");
@@ -204,5 +268,41 @@ mod tests {
         assert!(!result.text.contains("<evil>"));
         assert!(result.text.contains("&lt;evil&gt;"));
         assert!(result.text.contains("id=\"x&quot; y\""));
+    }
+
+    #[test]
+    fn name_only_does_not_send_the_skill_body() {
+        let record = SkillRecord {
+            instance_id: "skill-1".into(),
+            canonical_id: "demo".into(),
+            display_name: "demo".into(),
+            description: "Demo skill".into(),
+            source: SkillSource::User,
+            source_label: "用户".into(),
+            manifest_path: String::new(),
+            manifest_hash: String::new(),
+            manifest_preview: String::new(),
+            override_state: SkillOverrideState::NameOnly,
+            raw_override_value: Some("name-only".into()),
+            explicit_override: true,
+            user_invocable: true,
+            model_invocable: true,
+            collision_instance_ids: Vec::new(),
+            warnings: Vec::new(),
+        };
+        let result = compose_prompt(
+            "hello",
+            None,
+            false,
+            vec![CompositionSkill {
+                record,
+                manifest: "secret skill instructions".into(),
+            }],
+            &[],
+        )
+        .unwrap();
+
+        assert!(result.text.contains("<skill id=\"demo\""));
+        assert!(!result.text.contains("secret skill instructions"));
     }
 }

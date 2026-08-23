@@ -1,16 +1,20 @@
 pub mod attachments;
 pub mod commands;
 pub mod config;
+pub mod conversations;
 pub mod dto;
+pub mod model_profiles;
 pub mod ollama;
 pub mod platform;
+pub mod product;
 pub mod prompt;
+pub mod sessions;
 pub mod settings;
 pub mod skills;
 pub mod state;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,6 +26,29 @@ pub fn run() {
             let state = AppState::initialize(app.handle())?;
             app.manage(state);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                if let Some(state) = window.try_state::<AppState>() {
+                    tauri::async_runtime::block_on(async {
+                        let _ = state.sessions.force_shutdown().await;
+                    });
+                }
+            }
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if paths.is_empty() || paths.len() > 10 {
+                    return;
+                }
+                if let Some(state) = window.try_state::<AppState>() {
+                    if let Some(grant) = commands::grant_dropped_attachments(&state, paths.to_vec())
+                    {
+                        let _ = window.emit(
+                            "cc-panel://attachment-drop",
+                            serde_json::json!({ "grant": grant }),
+                        );
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_bootstrap,
@@ -39,12 +66,41 @@ pub fn run() {
             commands::enhance_prompt,
             commands::pick_and_import_attachments,
             commands::import_dropped_attachments,
+            commands::preview_attachment,
             commands::confirm_sensitive_import,
             commands::remove_attachment,
             commands::clear_attachments,
             commands::compose_preview,
             commands::compose_and_copy,
+            commands::list_model_profiles,
+            commands::save_model_profile,
+            commands::prompt_and_save_model_profile,
+            commands::delete_model_profile,
+            commands::select_model_profile,
+            commands::restore_model_profile_selection,
+            commands::list_conversations,
+            commands::delete_conversation,
+            commands::rename_conversation,
+            commands::set_conversation_favorite,
+            commands::set_conversation_archived,
+            commands::start_claude_session,
+            commands::send_claude_message,
+            commands::stop_claude_session,
+            commands::respond_to_permission,
+            commands::retry_permission,
+            commands::list_permission_rules,
+            commands::save_permission_rule,
+            commands::delete_permission_rule,
+            commands::load_conversation_history,
             commands::set_native_notifications_enabled,
+            commands::get_project_memory,
+            commands::save_project_memory,
+            commands::run_environment_check,
+            commands::repair_environment_check,
+            commands::collect_diagnostics,
+            commands::check_for_updates,
+            commands::download_update,
+            commands::launch_update,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CC Panel");

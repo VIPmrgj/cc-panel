@@ -3,7 +3,10 @@ use std::{path::PathBuf, process::Stdio, time::Duration};
 use serde::Deserialize;
 use tokio::{process::Command, time::timeout};
 
-use crate::dto::{ApiError, ApiResult};
+use crate::{
+    dto::{ApiError, ApiResult},
+    platform::resolve_claude_executable,
+};
 
 const PLUGIN_OUTPUT_LIMIT: usize = 2 * 1024 * 1024;
 
@@ -27,20 +30,32 @@ struct PluginListEntry {
 
 impl PluginCli {
     pub async fn enabled_roots(&self) -> ApiResult<Vec<PluginRoot>> {
-        let child = Command::new("claude")
+        let executable = resolve_claude_executable().ok_or_else(|| {
+            ApiError::new(
+                "PLUGIN_CLI_UNAVAILABLE",
+                "找不到 Claude CLI，插件 Skill 暂不可用。",
+                true,
+            )
+        })?;
+        let mut command = Command::new(executable);
+        command
             .args(["plugin", "list", "--json"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|_| {
-                ApiError::new(
-                    "PLUGIN_CLI_UNAVAILABLE",
-                    "找不到 Claude CLI，插件 Skill 暂不可用。",
-                    true,
-                )
-            })?;
+            .kill_on_drop(true);
+        #[cfg(windows)]
+        {
+            // tokio::process::Command has an inherent creation_flags().
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：隐藏 Claude CLI 控制台窗口
+        }
+        let child = command.spawn().map_err(|_| {
+            ApiError::new(
+                "PLUGIN_CLI_UNAVAILABLE",
+                "找不到 Claude CLI，插件 Skill 暂不可用。",
+                true,
+            )
+        })?;
 
         let output = timeout(Duration::from_secs(8), child.wait_with_output())
             .await

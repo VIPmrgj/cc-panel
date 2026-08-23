@@ -10,7 +10,30 @@ pub fn replace_file_atomically(target: &Path, bytes: &[u8]) -> ApiResult<()> {
             false,
         )
     })?;
-    fs::create_dir_all(parent).map_err(|_| ApiError::io("create-settings-directory"))?;
+    if parent.exists() {
+        let metadata =
+            fs::symlink_metadata(parent).map_err(|_| ApiError::io("inspect-settings-directory"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(ApiError::new(
+                "UNSAFE_SETTINGS_PATH",
+                "设置目录不是安全的普通目录。",
+                false,
+            ));
+        }
+    } else {
+        fs::create_dir_all(parent).map_err(|_| ApiError::io("create-settings-directory"))?;
+    }
+    if target.exists() {
+        let metadata =
+            fs::symlink_metadata(target).map_err(|_| ApiError::io("inspect-settings-target"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(ApiError::new(
+                "UNSAFE_SETTINGS_PATH",
+                "设置文件不是安全的普通文件。",
+                false,
+            ));
+        }
+    }
 
     let mut temporary = tempfile::Builder::new()
         .prefix(".cc-panel-settings-")

@@ -6,6 +6,7 @@ interface Props {
   skill: SkillRecord;
   selected: boolean;
   pending: boolean;
+  advanced: boolean;
   onToggleSelected: () => void;
   onChangeState: (value: Exclude<SkillOverrideSelection, "unknown">) => void;
   onPreview: () => void;
@@ -23,6 +24,7 @@ export function SkillItem({
   skill,
   selected,
   pending,
+  advanced,
   onToggleSelected,
   onChangeState,
   onPreview,
@@ -36,6 +38,11 @@ export function SkillItem({
             type="checkbox"
             checked={selected}
             disabled={effectivelyOff || pending || !skill.manifestHash}
+            title={
+              effectivelyOff
+                ? "此 Skill 已关闭，勾选不会生效"
+                : "勾选后，本次消息会把这个 Skill 提供给 Agent"
+            }
             onChange={onToggleSelected}
           />
           <span className="skill-check__box" aria-hidden="true">
@@ -43,22 +50,33 @@ export function SkillItem({
           </span>
           <span className="skill-item__name">{skill.displayName}</span>
         </label>
-        <Button
-          variant="ghost"
-          className="icon-button icon-button--small"
-          aria-label={`预览 ${skill.displayName}`}
-          title="预览 SKILL.md"
-          icon={<Eye size={14} />}
-          onClick={onPreview}
-        >
-          <span className="sr-only">预览</span>
-        </Button>
+        {advanced && (
+          <Button
+            variant="ghost"
+            className="icon-button icon-button--small"
+            aria-label={"预览 " + skill.displayName}
+            title="预览 SKILL.md"
+            icon={<Eye size={14} />}
+            onClick={onPreview}
+          >
+            <span className="sr-only">预览</span>
+          </Button>
+        )}
       </div>
       <p className="skill-item__description">
         {skill.description || "没有可用描述"}
       </p>
+      {advanced && (
+        <p className="skill-item__help">
+          {effectivelyOff
+            ? "当前状态为关闭，勾选框不会启用它。"
+            : selected
+              ? "本次消息会把它交给 Agent。"
+              : "本次消息不会带上它，但以后仍可再次勾选。"}
+        </p>
+      )}
       <div className="skill-item__meta">
-        <span className={`source-badge source-badge--${skill.source}`}>
+        <span className={"source-badge source-badge--" + skill.source}>
           {skill.sourceLabel}
         </span>
         {skill.collisionInstanceIds.length > 0 && (
@@ -67,54 +85,58 @@ export function SkillItem({
             冲突
           </span>
         )}
-        {!skill.modelInvocable && (
+        {advanced && !skill.modelInvocable && (
           <span className="muted-badge">不自动调用</span>
         )}
       </div>
-      <div className="skill-item__actions">
-        <button
-          className="power-toggle"
-          data-on={!effectivelyOff || undefined}
-          disabled={pending || skill.overrideState === "unknown"}
-          aria-pressed={!effectivelyOff}
-          aria-label={`${effectivelyOff ? "启用" : "关闭"} ${skill.displayName}`}
-          onClick={() => onChangeState(effectivelyOff ? "default" : "off")}
-        >
-          <Power size={13} aria-hidden="true" />
-          {effectivelyOff ? "已关闭" : "可用"}
-        </button>
-        <label className="compact-select-wrap">
-          <span className="sr-only">{skill.displayName} 详细状态</span>
-          <select
-            className="compact-select"
-            value={skill.overrideState}
-            disabled={pending}
-            onChange={(event) =>
-              onChangeState(
-                event.target.value as Exclude<
-                  SkillOverrideSelection,
-                  "unknown"
-                >,
-              )
+      {advanced && (
+        <div className="skill-item__actions">
+          <button
+            className="power-toggle"
+            data-on={!effectivelyOff || undefined}
+            disabled={pending || skill.overrideState === "unknown"}
+            aria-pressed={!effectivelyOff}
+            aria-label={
+              (effectivelyOff ? "启用 " : "关闭 ") + skill.displayName
             }
+            onClick={() => onChangeState(effectivelyOff ? "default" : "off")}
           >
-            {(Object.keys(labels) as Array<keyof typeof labels>).map(
-              (value) => (
-                <option value={value} key={value}>
-                  {labels[value]}
+            <Power size={13} aria-hidden="true" />
+            {effectivelyOff ? "已关闭" : "可用"}
+          </button>
+          <label className="compact-select-wrap">
+            <span className="sr-only">{skill.displayName} 详细状态</span>
+            <select
+              className="compact-select"
+              value={skill.overrideState}
+              disabled={pending}
+              onChange={(event) =>
+                onChangeState(
+                  event.target.value as Exclude<
+                    SkillOverrideSelection,
+                    "unknown"
+                  >,
+                )
+              }
+            >
+              {(Object.keys(labels) as Array<keyof typeof labels>).map(
+                (value) => (
+                  <option value={value} key={value}>
+                    {labels[value]}
+                  </option>
+                ),
+              )}
+              {skill.overrideState === "unknown" && (
+                <option value="unknown" disabled>
+                  未知值
+                  {skill.rawOverrideValue ? "：" + skill.rawOverrideValue : ""}
                 </option>
-              ),
-            )}
-            {skill.overrideState === "unknown" && (
-              <option value="unknown" disabled>
-                未知值
-                {skill.rawOverrideValue ? `：${skill.rawOverrideValue}` : ""}
-              </option>
-            )}
-          </select>
-          <ChevronDown size={12} aria-hidden="true" />
-        </label>
-      </div>
+              )}
+            </select>
+            <ChevronDown size={12} aria-hidden="true" />
+          </label>
+        </div>
+      )}
     </article>
   );
 }

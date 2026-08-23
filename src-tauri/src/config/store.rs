@@ -7,7 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::dto::{ApiError, ApiResult, AppPreferences, RootEntry, RootKind};
+use crate::dto::{ApiError, ApiResult, AppPreferences, PermissionRule, RootEntry, RootKind};
 use crate::platform::replace_file_atomically;
 
 const CONFIG_FILE_LIMIT: u64 = 256 * 1024;
@@ -20,6 +20,7 @@ struct StoredConfig {
     additional_roots: Vec<RootEntry>,
     ollama: StoredOllama,
     native_notifications_enabled: bool,
+    permission_rules: Vec<PermissionRule>,
 }
 
 impl Default for StoredConfig {
@@ -30,6 +31,7 @@ impl Default for StoredConfig {
             additional_roots: Vec::new(),
             ollama: StoredOllama::default(),
             native_notifications_enabled: false,
+            permission_rules: Vec::new(),
         }
     }
 }
@@ -146,6 +148,39 @@ impl ConfigStore {
         self.save_locked(&next)?;
         *value = next;
         Ok(())
+    }
+
+    pub fn permission_rules(&self) -> Vec<PermissionRule> {
+        self.value
+            .lock()
+            .expect("config mutex poisoned")
+            .permission_rules
+            .clone()
+    }
+
+    pub fn save_permission_rule(&self, rule: PermissionRule) -> ApiResult<Vec<PermissionRule>> {
+        let mut value = self.value.lock().expect("config mutex poisoned");
+        let mut next = value.clone();
+        next.permission_rules.retain(|item| item.id != rule.id);
+        if let Some(existing) = next.permission_rules.iter_mut().find(|item| {
+            item.tool_name == rule.tool_name && item.command == rule.command && item.cwd == rule.cwd
+        }) {
+            existing.id = rule.id;
+        } else {
+            next.permission_rules.push(rule);
+        }
+        self.save_locked(&next)?;
+        *value = next;
+        Ok(value.permission_rules.clone())
+    }
+
+    pub fn delete_permission_rule(&self, id: &str) -> ApiResult<Vec<PermissionRule>> {
+        let mut value = self.value.lock().expect("config mutex poisoned");
+        let mut next = value.clone();
+        next.permission_rules.retain(|rule| rule.id != id);
+        self.save_locked(&next)?;
+        *value = next;
+        Ok(value.permission_rules.clone())
     }
 
     fn save_locked(&self, value: &StoredConfig) -> ApiResult<()> {

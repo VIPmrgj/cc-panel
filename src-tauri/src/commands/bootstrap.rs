@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::{
     dto::{ApiResult, BootstrapResponse},
+    platform::resolve_claude_executable,
     state::AppState,
 };
 
@@ -27,12 +28,18 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> ApiResult<BootstrapRes
 }
 
 fn claude_version() -> Option<String> {
-    let output = Command::new("claude")
+    let executable = resolve_claude_executable()?;
+    let mut command = Command::new(executable);
+    command
         .arg("--version")
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：隐藏 Claude CLI 控制台窗口
+    }
+    let output = command.output().ok()?;
     if !output.status.success() || output.stdout.len() > 1024 {
         return None;
     }

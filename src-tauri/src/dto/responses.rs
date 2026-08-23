@@ -160,7 +160,6 @@ pub enum AttachmentKind {
 pub struct AttachmentRecord {
     pub handle: String,
     pub name: String,
-    pub path: String,
     pub kind: AttachmentKind,
     pub mime: String,
     pub raw_bytes: usize,
@@ -173,10 +172,18 @@ pub struct AttachmentRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AttachmentPreview {
+    pub attachment: AttachmentRecord,
+    pub content: String,
+    pub truncated: bool,
+    pub data_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingSensitiveAttachment {
     pub confirmation_token: String,
     pub name: String,
-    pub path: String,
     pub reason: String,
     pub raw_bytes: usize,
 }
@@ -184,7 +191,7 @@ pub struct PendingSensitiveAttachment {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RejectedAttachment {
-    pub path: String,
+    pub name: String,
     pub code: String,
     pub message: String,
 }
@@ -243,4 +250,82 @@ pub struct CopyResult {
 pub struct EnhancePromptResponse {
     pub text: String,
     pub model: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionRule {
+    pub id: String,
+    pub tool_name: String,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemory {
+    pub project_path: String,
+    pub enabled: bool,
+    pub purpose: String,
+    pub tech_stack: String,
+    pub rules: String,
+    pub avoid: String,
+    pub test_command: String,
+    pub preferred_language: String,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemoryInput {
+    pub enabled: bool,
+    pub purpose: String,
+    pub tech_stack: String,
+    pub rules: String,
+    pub avoid: String,
+    pub test_command: String,
+    pub preferred_language: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentCheck {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub summary: String,
+    pub detail: String,
+    pub fix_available: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentReport {
+    pub checked_at_ms: u64,
+    pub checks: Vec<EnvironmentCheck>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticResult {
+    pub path: String,
+    pub created_at_ms: u64,
+    pub included_sections: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub release_url: Option<String>,
+    pub installer_url: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedUpdate {
+    pub path: String,
+    pub bytes: u64,
 }

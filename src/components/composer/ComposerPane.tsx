@@ -139,6 +139,11 @@ export function ComposerPane({
                 !ollama.online ||
                 !ollama.selectedModel
               }
+              title={
+                !ollama.online || !ollama.selectedModel
+                  ? "Ollama 离线或未选择本地模型，无法改写"
+                  : undefined
+              }
               onClick={onEnhance}
             >
               增强
@@ -146,7 +151,9 @@ export function ComposerPane({
           </div>
         </div>
         <p className="field-help">
-          仅本地 Ollama 改写，不联网搜索；失败时原文保持不变。
+          仅本地 Ollama 改写（需先运行 Ollama
+          并选择模型），不联网搜索；失败时原文保持不变。
+          这里的「增强」与下方「构建预览/复制最终 Prompt」的 XML 组装是两回事。
         </p>
         {enhancedPrompt && (
           <div className="candidate-panel">
@@ -198,7 +205,7 @@ export function ComposerPane({
           disabled={!canCompose}
           onClick={onCopy}
         >
-          复制最终 Prompt <kbd>Ctrl+Enter</kbd>
+          复制最终 Prompt
         </Button>
       </div>
     </main>

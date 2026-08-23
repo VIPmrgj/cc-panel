@@ -19,12 +19,18 @@ export type ComposerAction =
   | { type: "setEnhancedPrompt"; value: string | null }
   | { type: "setUseEnhanced"; value: boolean }
   | { type: "toggleSkill"; skill: SkillRecord }
+  | { type: "applyBasicDefaults"; skills: SkillRecord[] }
   | { type: "removeSkill"; instanceId: string }
   | { type: "reconcileSkills"; skills: SkillRecord[] }
   | { type: "addAttachments"; attachments: AttachmentRecord[] }
   | { type: "removeAttachment"; handle: string }
   | { type: "moveAttachment"; handle: string; direction: -1 | 1 }
   | { type: "setPreview"; preview: CompositionResult }
+  | {
+      type: "clearSentContext";
+      sent: ComposerState;
+      defaultSkills?: SkillRecord[];
+    }
   | { type: "markStale" }
   | { type: "reset" };
 
@@ -65,6 +71,9 @@ export function composerReducer(
         previewStale: true,
       };
     case "toggleSkill": {
+      if (action.skill.overrideState === "off" || !action.skill.manifestHash) {
+        return state;
+      }
       const selected = state.selectedSkills.some(
         (skill) => skill.instanceId === action.skill.instanceId,
       );
@@ -77,6 +86,24 @@ export function composerReducer(
           : [...state.selectedSkills, action.skill],
         previewStale: true,
       };
+    }
+    case "applyBasicDefaults": {
+      const selectedIds = new Set(
+        state.selectedSkills.map((skill) => skill.instanceId),
+      );
+      const additions = action.skills.filter(
+        (skill) =>
+          !selectedIds.has(skill.instanceId) &&
+          skill.overrideState !== "off" &&
+          Boolean(skill.manifestHash),
+      );
+      return additions.length
+        ? {
+            ...state,
+            selectedSkills: [...state.selectedSkills, ...additions],
+            previewStale: true,
+          }
+        : state;
     }
     case "removeSkill":
       return {
@@ -143,6 +170,42 @@ export function composerReducer(
       return { ...state, preview: action.preview, previewStale: false };
     case "markStale":
       return { ...state, previewStale: true };
+    case "clearSentContext": {
+      const promptUnchanged =
+        state.originalPrompt === action.sent.originalPrompt;
+      const sentSkillIds = new Set(
+        action.sent.selectedSkills.map((skill) => skill.instanceId),
+      );
+      const sentAttachmentHandles = new Set(
+        action.sent.attachments.map((attachment) => attachment.handle),
+      );
+      const retainedSkills = state.selectedSkills.filter(
+        (skill) => !sentSkillIds.has(skill.instanceId),
+      );
+      const retainedSkillIds = new Set(
+        retainedSkills.map((skill) => skill.instanceId),
+      );
+      return {
+        ...state,
+        originalPrompt: promptUnchanged ? "" : state.originalPrompt,
+        enhancedPrompt: promptUnchanged ? null : state.enhancedPrompt,
+        useEnhanced: promptUnchanged ? false : state.useEnhanced,
+        selectedSkills: [
+          ...retainedSkills,
+          ...(action.defaultSkills ?? []).filter(
+            (skill) =>
+              !retainedSkillIds.has(skill.instanceId) &&
+              skill.overrideState !== "off" &&
+              Boolean(skill.manifestHash),
+          ),
+        ],
+        attachments: state.attachments.filter(
+          (attachment) => !sentAttachmentHandles.has(attachment.handle),
+        ),
+        preview: null,
+        previewStale: true,
+      };
+    }
     case "reset":
       return initialComposerState;
   }

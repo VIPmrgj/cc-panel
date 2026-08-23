@@ -7,7 +7,6 @@ import { SensitiveImportDialog } from "./SensitiveImportDialog";
 const attachment: PendingSensitiveAttachment = {
   confirmationToken: "token",
   name: ".env",
-  path: "C:/project/.env",
   reason: "文件名可能包含密钥。",
   rawBytes: 12,
 };

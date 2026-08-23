@@ -34,6 +34,18 @@ describe("ModelControl", () => {
     expect(screen.getByText(/实际模型无法观察/)).toBeInTheDocument();
   });
 
+  it("warns when an env-level candidate overrides the desired model", () => {
+    render(
+      <ModelControl
+        model={model}
+        saving={false}
+        onSave={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/不会改变实际默认模型/)).toBeInTheDocument();
+  });
+
   it("preserves a custom model ID", async () => {
     const onSave = vi.fn();
     render(

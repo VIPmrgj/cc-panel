@@ -611,8 +611,9 @@ dependencies = [
 
 [[package]]
 name = "cc-panel"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
+ "base64 0.22.1",
  "dirs",
  "dunce",
  "fs2",
@@ -621,6 +622,7 @@ dependencies = [
  "httpmock",
  "image",
  "infer",
+ "libc",
  "pdf-extract",
  "pretty_assertions",
  "reqwest 0.12.28",

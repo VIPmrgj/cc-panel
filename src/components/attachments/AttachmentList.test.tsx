@@ -6,7 +6,6 @@ import { AttachmentList } from "./AttachmentList";
 const attachments = ["a", "b"].map((handle) => ({
   handle,
   name: `${handle}.txt`,
-  path: `C:/fixture/${handle}.txt`,
   kind: "text" as const,
   mime: "text/plain",
   rawBytes: 1,
@@ -16,6 +15,20 @@ const attachments = ["a", "b"].map((handle) => ({
 }));
 
 describe("AttachmentList", () => {
+  it("opens an explicit preview action for each attachment", async () => {
+    const onPreview = vi.fn();
+    render(
+      <AttachmentList
+        attachments={attachments}
+        onRemove={vi.fn()}
+        onMove={vi.fn()}
+        onPreview={onPreview}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "查看 a.txt" }));
+    expect(onPreview).toHaveBeenCalledWith("a");
+  });
   it("provides keyboard-operable reorder controls", async () => {
     const onMove = vi.fn();
     render(
@@ -23,6 +36,7 @@ describe("AttachmentList", () => {
         attachments={attachments}
         onRemove={vi.fn()}
         onMove={onMove}
+        onPreview={vi.fn()}
       />,
     );
     const down = screen.getByRole("button", { name: "下移 a.txt" });

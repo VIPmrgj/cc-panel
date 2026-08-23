@@ -23,7 +23,6 @@ const skill = {
 const attachment = {
   handle: "a",
   name: "a.txt",
-  path: "C:/fixture/a.txt",
   kind: "text",
   mime: "text/plain",
   rawBytes: 1,
@@ -70,6 +69,71 @@ describe("composerReducer", () => {
     expect(disabled.selectedSkills).toEqual([]);
   });
 
+  it("applies valid basic-mode defaults without duplicates", () => {
+    const defaultSkill = {
+      ...skill,
+      instanceId: "default-skill",
+      description: "默认开启",
+    };
+    const selected = composerReducer(initialComposerState, {
+      type: "applyBasicDefaults",
+      skills: [
+        defaultSkill,
+        { ...defaultSkill, instanceId: "off", overrideState: "off" },
+      ],
+    });
+    const repeated = composerReducer(selected, {
+      type: "applyBasicDefaults",
+      skills: [defaultSkill],
+    });
+
+    expect(selected.selectedSkills).toEqual([defaultSkill]);
+    expect(repeated.selectedSkills).toEqual([defaultSkill]);
+  });
+  it("does not select a disabled skill", () => {
+    const disabled = composerReducer(initialComposerState, {
+      type: "toggleSkill",
+      skill: { ...skill, overrideState: "off" },
+    });
+    expect(disabled.selectedSkills).toEqual([]);
+  });
+  it("clears only context that belonged to the sent turn", () => {
+    const sent = {
+      ...initialComposerState,
+      originalPrompt: "sent",
+      selectedSkills: [skill],
+      attachments: [attachment],
+    };
+    const newerSkill = { ...skill, instanceId: "skill-2" };
+    const newerAttachment = { ...attachment, handle: "b", name: "b.txt" };
+    const current = {
+      ...sent,
+      originalPrompt: "next draft",
+      selectedSkills: [skill, newerSkill],
+      attachments: [attachment, newerAttachment],
+    };
+    const cleared = composerReducer(current, {
+      type: "clearSentContext",
+      sent,
+    });
+    expect(cleared.originalPrompt).toBe("next draft");
+    expect(cleared.selectedSkills).toEqual([newerSkill]);
+    expect(cleared.attachments).toEqual([newerAttachment]);
+  });
+
+  it("restores basic defaults after the sent context is cleared", () => {
+    const sent = {
+      ...initialComposerState,
+      selectedSkills: [skill],
+    };
+    const cleared = composerReducer(sent, {
+      type: "clearSentContext",
+      sent,
+      defaultSkills: [skill],
+    });
+
+    expect(cleared.selectedSkills).toEqual([skill]);
+  });
   it("marks previews stale after any composition input changes", () => {
     let state = composerReducer(initialComposerState, {
       type: "setPreview",

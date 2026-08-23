@@ -1,7 +1,7 @@
 {
   "name": "cc-panel",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,7 +25,9 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",

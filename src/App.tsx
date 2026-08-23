@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { Channel } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   isPermissionGranted,
   requestPermission,
@@ -14,43 +16,198 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./api/commands";
 import type {
   AttachmentImportResult,
+  AttachmentPreview,
   BootstrapResponse,
+  ClaudeRunEnvelope,
+  ChatMessage,
   CompositionRequest,
+  CompositionResult,
+  DiagnosticResult,
+  DownloadedUpdate,
+  EnvironmentReport,
+  ConversationSummary,
+  ModelProfile,
+  ModelProfileInput,
   PendingSensitiveAttachment,
+  PermissionRule,
+  PermissionRuleRequest,
   SkillOverrideSelection,
   SkillRecord,
+  UpdateInfo,
 } from "./api/dto";
+import { ActivityRail, type ActivityId } from "./components/shell/ActivityRail";
+import { InspectorPane } from "./components/shell/InspectorPane";
+import { LeftSidebar } from "./components/shell/LeftSidebar";
+import {
+  getBasicDefaultSkills,
+  persistSkillPanelMode,
+  readSkillPanelMode,
+  type SkillPanelMode,
+} from "./components/skills/skillMode";
+import { StatusBar } from "./components/shell/StatusBar";
+import { SettingsPanel } from "./components/shell/SettingsPanel";
+import { AddModelDialog } from "./components/models/AddModelDialog";
+import { ModelManager } from "./components/models/ModelManager";
+import { ChatComposer } from "./components/chat/ChatComposer";
+import { ChatHeader } from "./components/chat/ChatHeader";
+import { ChatTranscript } from "./components/chat/ChatTranscript";
+import type { PermissionDecision } from "./components/chat/ChatCards";
+import { ConversationPanel } from "./components/chat/ConversationPanel";
 import { Button } from "./components/common/Button";
 import { Drawer } from "./components/common/Drawer";
 import { Notice } from "./components/common/Notice";
 import { SensitiveImportDialog } from "./components/common/SensitiveImportDialog";
-import { ComposerPane } from "./components/composer/ComposerPane";
-import { InspectorPane } from "./components/shell/InspectorPane";
-import { LeftSidebar } from "./components/shell/LeftSidebar";
-import { StatusBar } from "./components/shell/StatusBar";
-import { useCopyShortcut } from "./hooks/useCopyShortcut";
+import { OnboardingDialog } from "./components/onboarding/OnboardingDialog";
+import { TaskPanel } from "./components/tasks/TaskPanel";
+import { RunCenter } from "./components/runtime/RunCenter";
+import {
+  TASK_TEMPLATES,
+  type TaskTemplate,
+} from "./components/tasks/taskTemplates";
+import {
+  persistExperienceMode,
+  persistOnboardingComplete,
+  readExperienceMode,
+  readOnboardingComplete,
+  type ExperienceMode,
+} from "./state/experienceMode";
+import { classifyPermissionRisk } from "./state/permissionRisk";
+import { persistTheme, readTheme, type AppTheme } from "./state/theme";
 import { useDragDrop } from "./hooks/useDragDrop";
+import {
+  chatReducer,
+  getChatRunState,
+  initialChatState,
+} from "./state/chatReducer";
 import { composerReducer, initialComposerState } from "./state/composerReducer";
+import {
+  beginTransitionState,
+  finishTransitionState,
+  transitionGenerationMatches,
+  transitionIsCurrent as isCurrentTransition,
+  type TransitionFenceState,
+} from "./state/transitionFence";
+
+function apiErrorCode(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function permissionInputFields(input: unknown) {
+  if (!input || typeof input !== "object") {
+    return { command: null as string | null, cwd: null as string | null };
+  }
+  const record = input as Record<string, unknown>;
+  const pick = (...keys: string[]) =>
+    keys
+      .map((key) => record[key])
+      .find(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
+      )
+      ?.trim() ?? null;
+  return {
+    command: pick("command", "cmd", "script"),
+    cwd: pick("cwd", "working_directory", "workingDirectory"),
+  };
+}
+
+function permissionRuleFor(message: ChatMessage): PermissionRuleRequest {
+  const fields = permissionInputFields(message.toolInput);
+  return {
+    toolName: message.toolName?.trim() || "unknown",
+    command: fields.command,
+    cwd: fields.cwd,
+  };
+}
+
+function permissionRuleMatches(
+  rule: PermissionRule,
+  message: ChatMessage,
+): boolean {
+  const candidate = permissionRuleFor(message);
+  return (
+    rule.toolName === candidate.toolName &&
+    (rule.command == null || rule.command === candidate.command) &&
+    (rule.cwd == null || rule.cwd === candidate.cwd)
+  );
+}
+
+interface QueuedPrompt {
+  id: string;
+  composition: CompositionRequest;
+}
 
 export default function App() {
   const queryClient = useQueryClient();
-  const [composer, dispatch] = useReducer(
+  const [composer, dispatchComposer] = useReducer(
     composerReducer,
     initialComposerState,
   );
+  const [chat, dispatchChat] = useReducer(chatReducer, initialChatState);
+  const [activeActivity, setActiveActivity] = useState<ActivityId>("chat");
+  const [experienceMode, setExperienceMode] =
+    useState<ExperienceMode>(readExperienceMode);
+  const [theme, setTheme] = useState<AppTheme>(readTheme);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [search, setSearch] = useState("");
+  const [skillMode, setSkillMode] =
+    useState<SkillPanelMode>(readSkillPanelMode);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   const [previewedSkill, setPreviewedSkill] = useState<SkillRecord | null>(
     null,
   );
+  const [attachmentPreview, setAttachmentPreview] =
+    useState<AttachmentPreview | null>(null);
+  const [promptPreviewRequest, setPromptPreviewRequest] = useState(0);
   const [sensitiveQueue, setSensitiveQueue] = useState<
     PendingSensitiveAttachment[]
   >([]);
   const [operationMessage, setOperationMessage] = useState("");
   const [liveMessage, setLiveMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
+  const [showFinalPrompt, setShowFinalPrompt] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingBusy, setOnboardingBusy] = useState(false);
+  const autoPromptedRef = useRef(false);
+  const [transitionBusy, setTransitionBusy] = useState(false);
+  const [permissionBusy, setPermissionBusy] = useState(false);
+  const [modelDialog, setModelDialog] = useState<ModelProfile | null | false>(
+    false,
+  );
+  const [modelDialogBusy, setModelDialogBusy] = useState(false);
+  const [environmentReport, setEnvironmentReport] =
+    useState<EnvironmentReport>();
+  const [downloadedUpdate, setDownloadedUpdate] = useState<DownloadedUpdate>();
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult>();
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo>();
+  const [environmentRepairId, setEnvironmentRepairId] = useState<string | null>(
+    null,
+  );
+
   const composerRef = useRef(composer);
+  const chatRef = useRef(chat);
+  const activeChannelRef = useRef<Channel<ClaudeRunEnvelope> | null>(null);
+  const transitionFenceRef = useRef<TransitionFenceState>({
+    generation: 0,
+    activeGeneration: null,
+  });
+  const transitionBusyRef = useRef(false);
+  const sendInFlightRef = useRef(false);
+  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  const lastCompositionRef = useRef<CompositionRequest | null>(null);
+  const pendingPermissionRef = useRef<string | null>(null);
+  const sessionPermissionRulesRef = useRef<Record<string, PermissionRule[]>>(
+    {},
+  );
+  const userMessageCounter = useRef(0);
+  const basicDefaultsAppliedRef = useRef(false);
   composerRef.current = composer;
+  chatRef.current = chat;
+  queuedPromptsRef.current = queuedPrompts;
 
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
@@ -58,11 +215,72 @@ export default function App() {
   });
   const bootstrap = bootstrapQuery.data;
 
+  const basicDefaultSkills = useMemo(
+    () => getBasicDefaultSkills(bootstrap?.skills.skills ?? []),
+    [bootstrap?.skills.skills],
+  );
+
+  const permissionRulesQuery = useQuery({
+    queryKey: ["permission-rules"],
+    queryFn: commands.listPermissionRules,
+  });
+  const profilesQuery = useQuery({
+    queryKey: ["model-profiles"],
+    queryFn: commands.listModelProfiles,
+  });
+  const conversationsQuery = useQuery({
+    queryKey: ["conversations"],
+    queryFn: commands.listConversations,
+  });
+  const projectMemoryQuery = useQuery({
+    queryKey: [
+      "project-memory",
+      bootstrap?.preferences.selectedProjectRoot?.path ?? null,
+    ],
+    queryFn: commands.getProjectMemory,
+    enabled: Boolean(bootstrap?.preferences.selectedProjectRoot),
+  });
+  const profiles = profilesQuery.data?.profiles ?? [];
+  const selectedProfile = profiles.find((profile) => profile.selected) ?? null;
+
+  const claudeOk = bootstrap?.skills.claudeCliAvailable ?? false;
+  const projectOk = Boolean(bootstrap?.preferences.selectedProjectRoot);
+  const modelOk = profiles.some(
+    (profile) => profile.selected && profile.hasApiKey,
+  );
+  const missingPrerequisites = !claudeOk || !projectOk || !modelOk;
+  const conversations = useMemo(
+    () => conversationsQuery.data ?? [],
+    [conversationsQuery.data],
+  );
+
+  useEffect(() => {
+    if (!bootstrapQuery.isSuccess || basicDefaultsAppliedRef.current) return;
+    basicDefaultsAppliedRef.current = true;
+    if (skillMode === "basic") {
+      dispatchComposer({
+        type: "applyBasicDefaults",
+        skills: basicDefaultSkills,
+      });
+    }
+  }, [basicDefaultSkills, bootstrapQuery.isSuccess, skillMode]);
   useEffect(() => {
     if (bootstrap?.attachments.length) {
-      dispatch({ type: "addAttachments", attachments: bootstrap.attachments });
+      dispatchComposer({
+        type: "addAttachments",
+        attachments: bootstrap.attachments,
+      });
     }
   }, [bootstrap?.attachments]);
+
+  // 首次启动引导：所有步骤可跳过，完成后可从设置再次打开。
+  useEffect(() => {
+    if (!bootstrapQuery.isSuccess || !profilesQuery.isSuccess) return;
+    if (!readOnboardingComplete() && !autoPromptedRef.current) {
+      autoPromptedRef.current = true;
+      setOnboardingOpen(true);
+    }
+  }, [bootstrapQuery.isSuccess, profilesQuery.isSuccess]);
 
   const updateBootstrap = useCallback(
     (updater: (current: BootstrapResponse) => BootstrapResponse) => {
@@ -70,7 +288,10 @@ export default function App() {
         if (!current) return current;
         const next = updater(current);
         if (next.skills !== current.skills) {
-          dispatch({ type: "reconcileSkills", skills: next.skills.skills });
+          dispatchComposer({
+            type: "reconcileSkills",
+            skills: next.skills.skills,
+          });
           setPreviewedSkill((previewed) =>
             previewed
               ? (next.skills.skills.find(
@@ -93,6 +314,82 @@ export default function App() {
     setOperationMessage(message);
     setLiveMessage(message);
   }, []);
+
+  const projectMemoryMutation = useMutation({
+    mutationFn: commands.saveProjectMemory,
+    onSuccess: (memory) => {
+      queryClient.setQueryData(["project-memory", memory.projectPath], memory);
+      setOperationMessage("项目记忆已保存。");
+      setLiveMessage("项目记忆已保存，之后发送的消息会带上项目上下文。");
+    },
+    onError: reportError,
+  });
+
+  const environmentMutation = useMutation({
+    mutationFn: commands.runEnvironmentCheck,
+    onSuccess: (report) => {
+      setEnvironmentReport(report);
+      setOperationMessage("环境自检完成。");
+    },
+    onError: reportError,
+  });
+
+  const environmentRepairMutation = useMutation({
+    mutationFn: commands.repairEnvironmentCheck,
+    onMutate: (id) => setEnvironmentRepairId(id),
+    onSuccess: (report) => {
+      setEnvironmentReport(report);
+      setOperationMessage("环境修复操作已完成，请查看检查结果。");
+    },
+    onError: reportError,
+    onSettled: () => setEnvironmentRepairId(null),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: commands.checkForUpdates,
+    onSuccess: (info) => {
+      setUpdateInfo(info);
+      setOperationMessage(info.message);
+    },
+    onError: reportError,
+  });
+
+  const downloadUpdateMutation = useMutation({
+    mutationFn: ({ url, version }: { url: string; version: string }) =>
+      commands.downloadUpdate(url, version),
+    onSuccess: (downloaded) => {
+      setDownloadedUpdate(downloaded);
+      setOperationMessage("更新安装包已下载到临时目录。");
+    },
+    onError: reportError,
+  });
+
+  const diagnosticMutation = useMutation({
+    mutationFn: commands.collectDiagnostics,
+    onSuccess: (result) => {
+      setDiagnosticResult(result);
+      setOperationMessage("诊断包已生成。");
+    },
+    onError: reportError,
+  });
+  const deleteConversationMutation = useMutation({
+    mutationFn: async (conversation: ConversationSummary) => {
+      if (
+        chatRef.current.sessionId === conversation.sessionId &&
+        chatRef.current.lifecycle !== "disconnected" &&
+        chatRef.current.lifecycle !== "exited"
+      ) {
+        throw new Error("当前正在使用的对话不能删除，请先新建对话。");
+      }
+      return commands.deleteConversation(conversation.sessionId);
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(["conversations"], next);
+      setOperationMessage("对话记录已删除。");
+      setLiveMessage("对话记录已删除。 ");
+    },
+    onError: reportError,
+  });
 
   const refreshSkills = useMutation({
     mutationFn: commands.refreshSkills,
@@ -160,7 +457,7 @@ export default function App() {
         return;
       }
       queryClient.setQueryData(["bootstrap"], next);
-      dispatch({ type: "reconcileSkills", skills: next.skills.skills });
+      dispatchComposer({ type: "reconcileSkills", skills: next.skills.skills });
       setPreviewedSkill(null);
       setOperationMessage(
         "目录已登记并重新扫描。附加目录不代表另一个 Claude 进程实际使用了 --add-dir。",
@@ -179,7 +476,7 @@ export default function App() {
         );
         return;
       }
-      dispatch({ type: "setEnhancedPrompt", value: result.text });
+      dispatchComposer({ type: "setEnhancedPrompt", value: result.text });
       setOperationMessage(
         `已由本地 ${result.model} 生成增强候选；原文保持不变。`,
       );
@@ -188,9 +485,33 @@ export default function App() {
     onError: reportError,
   });
 
+  const ollamaMutation = useMutation({
+    mutationFn: (model: string | null) =>
+      commands.saveOllamaPreferences(
+        bootstrap?.preferences.ollamaBaseUrl ?? "http://localhost:11434",
+        model,
+      ),
+    onSuccess: (ollama, model) => {
+      updateBootstrap((current) => ({
+        ...current,
+        ollama,
+        preferences: { ...current.preferences, ollamaModel: model },
+      }));
+      setOperationMessage(
+        model
+          ? "本地 Prompt 优化已选择：" + model + "。"
+          : "本地 Prompt 优化已关闭。",
+      );
+    },
+    onError: reportError,
+  });
+
   const absorbImportResult = useCallback((result: AttachmentImportResult) => {
     if (result.imported.length) {
-      dispatch({ type: "addAttachments", attachments: result.imported });
+      dispatchComposer({
+        type: "addAttachments",
+        attachments: result.imported,
+      });
     }
     if (result.pendingConfirmation.length) {
       setSensitiveQueue((current) => [
@@ -216,9 +537,9 @@ export default function App() {
   }, []);
 
   const importMutation = useMutation({
-    mutationFn: (paths?: string[]) =>
-      paths
-        ? commands.importDroppedAttachments(paths)
+    mutationFn: (drop?: { grant: string }) =>
+      drop
+        ? commands.importDroppedAttachments(drop.grant)
         : commands.pickAndImportAttachments(),
     onSuccess: absorbImportResult,
     onError: reportError,
@@ -227,7 +548,7 @@ export default function App() {
   const confirmSensitiveMutation = useMutation({
     mutationFn: commands.confirmSensitiveImport,
     onSuccess: (attachment, token) => {
-      dispatch({ type: "addAttachments", attachments: [attachment] });
+      dispatchComposer({ type: "addAttachments", attachments: [attachment] });
       setSensitiveQueue((queue) =>
         queue.filter((item) => item.confirmationToken !== token),
       );
@@ -239,12 +560,23 @@ export default function App() {
   const removeAttachmentMutation = useMutation({
     mutationFn: commands.removeAttachment,
     onSuccess: (_, handle) => {
-      dispatch({ type: "removeAttachment", handle });
+      dispatchComposer({ type: "removeAttachment", handle });
+      setAttachmentPreview((current) =>
+        current?.attachment.handle === handle ? null : current,
+      );
       setLiveMessage("附件已移除。 ");
     },
     onError: reportError,
   });
 
+  const attachmentPreviewMutation = useMutation({
+    mutationFn: commands.previewAttachment,
+    onSuccess: (preview) => {
+      setAttachmentPreview(preview);
+      setLiveMessage("附件预览已打开。 ");
+    },
+    onError: reportError,
+  });
   const notificationMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
       if (enabled) {
@@ -272,21 +604,8 @@ export default function App() {
   });
 
   const compositionRequest = useMemo<CompositionRequest>(
-    () => ({
-      originalPrompt: composer.originalPrompt,
-      enhancedPrompt: composer.enhancedPrompt,
-      useEnhanced: composer.useEnhanced,
-      selectedSkills: composer.selectedSkills.map((skill) => ({
-        instanceId: skill.instanceId,
-        manifestHash: skill.manifestHash,
-      })),
-      attachmentHandles: composer.attachments.map((item) => item.handle),
-    }),
+    () => buildCompositionRequest(composer),
     [composer],
-  );
-  const compositionSignature = useMemo(
-    () => JSON.stringify(compositionRequest),
-    [compositionRequest],
   );
   const canCompose = Boolean(
     (composer.useEnhanced
@@ -297,19 +616,15 @@ export default function App() {
   );
 
   const previewMutation = useMutation({
-    mutationFn: ({
-      request,
-    }: {
-      request: CompositionRequest;
-      signature: string;
-    }) => commands.composePreview(request),
+    mutationFn: ({ request }: { request: CompositionRequest }) =>
+      commands.composePreview(request),
     onSuccess: (preview, variables) => {
-      dispatch({ type: "setPreview", preview });
+      dispatchComposer({ type: "setPreview", preview });
       if (
         JSON.stringify(buildCompositionRequest(composerRef.current)) !==
-        variables.signature
+        JSON.stringify(variables.request)
       ) {
-        dispatch({ type: "markStale" });
+        dispatchComposer({ type: "markStale" });
         setOperationMessage(
           "预览已构建，但输入在构建期间发生变化，当前预览已标记为过期。",
         );
@@ -317,24 +632,21 @@ export default function App() {
         setOperationMessage("最终 Prompt 预览已构建。 ");
       }
       setRightDrawerOpen(true);
+      setPromptPreviewRequest((value) => value + 1);
       setLiveMessage("最终 Prompt 预览已构建。 ");
     },
     onError: reportError,
   });
 
   const copyMutation = useMutation({
-    mutationFn: ({
-      request,
-    }: {
-      request: CompositionRequest;
-      signature: string;
-    }) => commands.composeAndCopy(request),
+    mutationFn: ({ request }: { request: CompositionRequest }) =>
+      commands.composeAndCopy(request),
     onSuccess: (result, variables) => {
-      dispatch({ type: "setPreview", preview: result });
+      dispatchComposer({ type: "setPreview", preview: result });
       const inputsChanged =
         JSON.stringify(buildCompositionRequest(composerRef.current)) !==
-        variables.signature;
-      if (inputsChanged) dispatch({ type: "markStale" });
+        JSON.stringify(variables.request);
+      if (inputsChanged) dispatchComposer({ type: "markStale" });
       const baseMessage = result.notificationWarning
         ? `最终 Prompt 已复制；${result.notificationWarning}`
         : "最终 Prompt 已复制到剪贴板。";
@@ -349,33 +661,1279 @@ export default function App() {
 
   const handlePreview = useCallback(() => {
     if (!canCompose || previewMutation.isPending) return;
-    previewMutation.mutate({
-      request: compositionRequest,
-      signature: compositionSignature,
+    previewMutation.mutate({ request: compositionRequest });
+  }, [canCompose, compositionRequest, previewMutation]);
+
+  // 「显示最终格式」开关：切到最终格式时若预览缺失或过期，自动重新构建。
+  const handleToggleFinalPrompt = useCallback(() => {
+    setShowFinalPrompt((current) => {
+      const next = !current;
+      if (next && (!composer.preview || composer.previewStale)) {
+        if (canCompose && !previewMutation.isPending) {
+          previewMutation.mutate({ request: compositionRequest });
+        }
+      }
+      return next;
     });
-  }, [canCompose, compositionRequest, compositionSignature, previewMutation]);
+  }, [
+    canCompose,
+    composer.preview,
+    composer.previewStale,
+    compositionRequest,
+    previewMutation,
+  ]);
+
+  useEffect(() => {
+    if (
+      showFinalPrompt &&
+      canCompose &&
+      (composer.previewStale || !composer.preview) &&
+      !previewMutation.isPending
+    ) {
+      previewMutation.mutate({ request: compositionRequest });
+    }
+  }, [
+    showFinalPrompt,
+    canCompose,
+    composer.preview,
+    composer.previewStale,
+    compositionRequest,
+    previewMutation,
+  ]);
 
   const handleCopy = useCallback(() => {
     if (!canCompose || copyMutation.isPending) return;
-    copyMutation.mutate({
-      request: compositionRequest,
-      signature: compositionSignature,
-    });
-  }, [canCompose, compositionRequest, compositionSignature, copyMutation]);
-  useCopyShortcut({
-    onCopy: handleCopy,
-    disabled:
-      !canCompose || copyMutation.isPending || Boolean(sensitiveQueue[0]),
-  });
+    copyMutation.mutate({ request: compositionRequest });
+  }, [canCompose, compositionRequest, copyMutation]);
 
   const handleDrop = useCallback(
-    (paths: string[]) => {
-      if (paths.length && !importMutation.isPending)
-        importMutation.mutate(paths);
+    (drop: { grant: string }) => {
+      if (!importMutation.isPending) importMutation.mutate(drop);
     },
     [importMutation],
   );
   useDragDrop(handleDrop);
+
+  const profileMutation = useMutation({
+    mutationFn: ({
+      profile,
+      promptForApiKey,
+    }: {
+      profile: ModelProfileInput;
+      promptForApiKey: boolean;
+    }) =>
+      promptForApiKey
+        ? commands.promptAndSaveModelProfile(
+            profile,
+            profilesQuery.data?.revision ?? 0,
+          )
+        : commands.saveModelProfile(profile, profilesQuery.data?.revision ?? 0),
+    onMutate: () => setModelDialogBusy(true),
+    onSuccess: (next) => {
+      if (!next) {
+        setOperationMessage("已取消凭据输入，模型配置未保存。");
+        return;
+      }
+      queryClient.setQueryData(["model-profiles"], next);
+      setModelDialog(false);
+      setOperationMessage("模型配置已保存。");
+      setLiveMessage("模型配置已保存。 ");
+    },
+    onError: reportError,
+    onSettled: () => setModelDialogBusy(false),
+  });
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: (profileId: string) =>
+      commands.deleteModelProfile(profileId, profilesQuery.data?.revision ?? 0),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["model-profiles"], next);
+      setOperationMessage("模型配置已删除。");
+      setLiveMessage("模型配置已删除。 ");
+    },
+    onError: reportError,
+  });
+
+  const selectProfileMutation = useMutation({
+    mutationFn: async (profileId: string | null) => {
+      if (sendInFlightRef.current)
+        throw new Error("消息发送中，请稍后切换模型。");
+      const generation = beginTransition();
+      const current = chatRef.current;
+      const shouldFork =
+        Boolean(current.sessionId && current.runId) &&
+        !["disconnected", "exited", "failed", "timed-out"].includes(
+          current.lifecycle,
+        );
+      const previousProfileId =
+        profilesQuery.data?.profiles.find((profile) => profile.selected)?.id ??
+        null;
+      if (shouldFork) {
+        dispatchChat({
+          type: "session-leaving",
+          generation,
+          sessionId: current.sessionId!,
+          runId: current.runId!,
+        });
+        await waitForSessionRelease();
+        if (!transitionIsCurrent(generation)) {
+          throw new Error("模型切换已被更新的操作取代。");
+        }
+      }
+      let selectedRevision: number | null = null;
+      try {
+        const next = await commands.selectModelProfile(
+          profileId,
+          profilesQuery.data?.revision ?? 0,
+        );
+        selectedRevision = next.revision;
+        if (shouldFork) {
+          if (!transitionIsCurrent(generation)) {
+            throw new Error("模型切换已被更新的操作取代。");
+          }
+          activeChannelRef.current = null;
+          await startSession(
+            {
+              mode: "fork",
+              parentSessionId: current.sessionId!,
+              profileId,
+              title: "模型分支",
+            },
+            generation,
+          );
+        }
+        finishTransition(generation);
+        return next;
+      } catch (error) {
+        if (
+          shouldFork &&
+          selectedRevision !== null &&
+          transitionIsCurrent(generation)
+        ) {
+          try {
+            const restored = await commands.restoreModelProfileSelection(
+              previousProfileId,
+              selectedRevision,
+            );
+            queryClient.setQueryData(["model-profiles"], restored);
+          } catch {
+            // Keep the original error; a conflicting rollback is reported by
+            // the next profile refresh instead of masking the fork failure.
+          }
+        }
+        finishTransition(generation);
+        throw error;
+      }
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(["model-profiles"], next);
+      setOperationMessage("默认模型配置已更新。");
+    },
+    onError: reportError,
+  });
+
+  const modelMutationBusy =
+    profilesQuery.isFetching ||
+    profileMutation.isPending ||
+    deleteProfileMutation.isPending ||
+    selectProfileMutation.isPending;
+
+  const beginTransition = useCallback(() => {
+    const begun = beginTransitionState(transitionFenceRef.current);
+    transitionFenceRef.current = begun.state;
+    transitionBusyRef.current = true;
+    setTransitionBusy(true);
+    return begun.generation;
+  }, []);
+
+  const transitionIsCurrent = useCallback(
+    (generation: number) =>
+      isCurrentTransition(transitionFenceRef.current, generation),
+    [],
+  );
+
+  const finishTransition = useCallback((generation: number) => {
+    const current = transitionFenceRef.current;
+    const next = finishTransitionState(current, generation);
+    if (next === current) return;
+    transitionFenceRef.current = next;
+    transitionBusyRef.current = false;
+    setTransitionBusy(false);
+  }, []);
+
+  const createChannel = useCallback(() => {
+    const channel = new Channel<ClaudeRunEnvelope>();
+    const pending: ClaudeRunEnvelope[] = [];
+    let ready = false;
+    channel.onmessage = (envelope) => {
+      if (activeChannelRef.current !== channel) return;
+      if (!ready) {
+        pending.push(envelope);
+        return;
+      }
+      dispatchChat({ type: "envelope", envelope });
+    };
+    activeChannelRef.current = channel;
+    return {
+      channel,
+      activate() {
+        ready = true;
+        pending.splice(0).forEach((envelope) => {
+          dispatchChat({ type: "envelope", envelope });
+        });
+      },
+    };
+  }, []);
+
+  const startSession = useCallback(
+    async (
+      request: {
+        mode: "new" | "resume" | "continue" | "fork" | "retry";
+        sessionId?: string | null;
+        parentSessionId?: string | null;
+        profileId?: string | null;
+        title?: string | null;
+      },
+      generation = beginTransition(),
+    ) => {
+      if (!transitionIsCurrent(generation)) {
+        throw new Error("会话切换已被更新的操作取代。");
+      }
+      if (request.mode === "new") {
+        dispatchChat({ type: "reset", generation });
+      } else {
+        const current = chatRef.current;
+        if (current.sessionId && current.runId) {
+          dispatchChat({
+            type: "session-leaving",
+            generation,
+            sessionId: current.sessionId,
+            runId: current.runId,
+          });
+        } else if (current.sessionId && request.mode === "resume") {
+          // Lazily-loaded conversation (history shown, no process running yet).
+          // Keep the loaded messages visible while the resume spawns instead of
+          // wiping them with a reset; session-started attaches the new run.
+          dispatchChat({
+            type: "session-loading",
+            generation,
+            sessionId: current.sessionId,
+          });
+        } else {
+          dispatchChat({
+            type: "reset",
+            generation,
+            sessionId: request.sessionId ?? null,
+          });
+        }
+      }
+      const stream = createChannel();
+      try {
+        const session = await commands.startClaudeSession(
+          {
+            mode: request.mode,
+            sessionId: request.sessionId ?? null,
+            parentSessionId: request.parentSessionId ?? null,
+            profileId: request.profileId ?? null,
+            title: request.title ?? null,
+          },
+          stream.channel,
+        );
+        if (!transitionIsCurrent(generation)) {
+          try {
+            await commands.stopClaudeSession(session.sessionId, session.runId);
+          } catch {
+            // A stale successful start may already have exited. It must never be
+            // activated or allowed to occupy the singleton manager.
+          }
+          throw new Error("会话切换已被更新的操作取代。");
+        }
+        dispatchChat({
+          type: "session-started",
+          generation,
+          sessionId: session.sessionId,
+          runId: session.runId,
+        });
+        stream.activate();
+        finishTransition(generation);
+        return session;
+      } catch (error) {
+        if (activeChannelRef.current === stream.channel) {
+          activeChannelRef.current = null;
+        }
+        finishTransition(generation);
+        throw error;
+      }
+    },
+    [beginTransition, createChannel, finishTransition, transitionIsCurrent],
+  );
+
+  const stopSession = useCallback(async () => {
+    const current = chatRef.current;
+    const sessionId = current.sessionId;
+    const runId = current.runId;
+    if (!sessionId || !runId) return;
+    try {
+      await commands.stopClaudeSession(sessionId, runId);
+      queuedPromptsRef.current = [];
+      setQueuedPrompts([]);
+      setOperationMessage("已停止当前回合，待发送消息已清除。");
+    } catch (error) {
+      reportError(error);
+    }
+  }, [reportError]);
+
+  const removeQueuedPrompt = useCallback((id: string) => {
+    const next = queuedPromptsRef.current.filter((item) => item.id !== id);
+    queuedPromptsRef.current = next;
+    setQueuedPrompts(next);
+    setOperationMessage("已取消一条排队消息。");
+  }, []);
+
+  const runState = getChatRunState(chat);
+  const lifecycleBusy =
+    sending ||
+    transitionBusy ||
+    [
+      "starting",
+      "thinking",
+      "tool-running",
+      "awaiting-permission",
+      "stopping",
+      "stalled",
+      "recovering",
+    ].includes(runState);
+
+  // A silent turn is not automatically killed: a long-running build or test
+  // may legitimately produce no text. We mark it as stalled and offer a safe
+  // recovery action instead of replaying a possibly destructive request.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const current = chatRef.current;
+      const active =
+        Boolean(current.activeTurnId) &&
+        (current.turnStatus === "running" ||
+          current.turnStatus === "awaiting-permission");
+      if (
+        !active ||
+        current.pendingPermission ||
+        current.recoveryStatus === "recovering"
+      ) {
+        if (current.recoveryStatus !== "none" && !current.pendingPermission) {
+          dispatchChat({ type: "recovery-cleared" });
+        }
+        return;
+      }
+      const lastEventAt = current.lastEventAt ?? Date.now();
+      if (
+        Date.now() - lastEventAt >= 45_000 &&
+        current.recoveryStatus === "none"
+      ) {
+        dispatchChat({ type: "recovery-suspected" });
+        setOperationMessage(
+          "超过 45 秒没有收到新的进度；请在运行中心检查或恢复会话。",
+        );
+        setLiveMessage("当前回合可能卡住，运行中心提供恢复操作。");
+      }
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const sendMessage = useCallback(
+    async (queued?: QueuedPrompt) => {
+      const current = chatRef.current;
+      const activeTurn =
+        current.turnStatus === "running" ||
+        current.turnStatus === "awaiting-permission" ||
+        Boolean(current.pendingPermission);
+      const sentComposer = queued ? null : composerRef.current;
+
+      if (!queued && !sentComposer?.originalPrompt.trim()) return;
+      if (missingPrerequisites) {
+        setOnboardingOpen(true);
+        return;
+      }
+
+      // Claude Code keeps accepting input while it is working. We mirror that
+      // behavior in the panel by holding the new composition until the current
+      // turn produces its result, rather than writing it into the active turn.
+      const canQueue =
+        activeTurn ||
+        sendInFlightRef.current ||
+        transitionBusyRef.current ||
+        sending;
+      if (!queued && canQueue) {
+        const composition = buildCompositionRequest(sentComposer!);
+        const item: QueuedPrompt = {
+          id: "turn-" + Date.now() + "-" + (userMessageCounter.current + 1),
+          composition,
+        };
+        userMessageCounter.current += 1;
+        const next = [...queuedPromptsRef.current, item];
+        queuedPromptsRef.current = next;
+        setQueuedPrompts(next);
+        dispatchComposer({
+          type: "clearSentContext",
+          sent: sentComposer!,
+          defaultSkills: skillMode === "basic" ? basicDefaultSkills : [],
+        });
+        setOperationMessage("已排队；当前回合完成后自动发送。");
+        setLiveMessage("消息已排队，当前回合完成后自动发送。");
+        return;
+      }
+
+      if (sendInFlightRef.current || transitionBusyRef.current || sending) {
+        return;
+      }
+
+      const composition =
+        queued?.composition ?? buildCompositionRequest(sentComposer!);
+      lastCompositionRef.current = composition;
+      const turnId =
+        queued?.id ??
+        "turn-" + Date.now() + "-" + (userMessageCounter.current + 1);
+      if (!queued) userMessageCounter.current += 1;
+
+      let expectedGeneration = transitionFenceRef.current.generation;
+      sendInFlightRef.current = true;
+      setSending(true);
+      try {
+        let sessionId = chatRef.current.sessionId;
+        let runId = chatRef.current.runId;
+        const terminal = [
+          "disconnected",
+          "exited",
+          "failed",
+          "timed-out",
+        ].includes(chatRef.current.lifecycle);
+        if (
+          !sessionId ||
+          !runId ||
+          terminal ||
+          chatRef.current.processReleased
+        ) {
+          const generation = beginTransition();
+          expectedGeneration = generation;
+          const hasLoadedConversation = Boolean(sessionId);
+          const loadedProfile =
+            conversations.find((c) => c.sessionId === sessionId)?.profileId ??
+            selectedProfile?.id ??
+            null;
+          const session = await startSession(
+            hasLoadedConversation
+              ? {
+                  mode: "resume",
+                  sessionId,
+                  profileId: loadedProfile,
+                  title: null,
+                }
+              : {
+                  mode: "new",
+                  profileId: selectedProfile?.id ?? null,
+                  title: "新对话",
+                },
+            generation,
+          );
+          sessionId = session.sessionId;
+          runId = session.runId;
+        }
+        if (
+          !sessionId ||
+          !runId ||
+          !transitionGenerationMatches(
+            transitionFenceRef.current,
+            expectedGeneration,
+          ) ||
+          transitionBusyRef.current
+        ) {
+          throw new Error("会话已切换，消息未发送。");
+        }
+        const userMessage: ChatMessage = {
+          id: "user-" + turnId,
+          role: "user",
+          content: "",
+          turnId,
+          status: "running",
+        };
+        dispatchChat({
+          type: "turn-started",
+          sessionId,
+          runId,
+          turnId,
+          message: userMessage,
+        });
+        let result: CompositionResult;
+        try {
+          result = await commands.sendClaudeMessage({
+            sessionId,
+            runId,
+            composition,
+          });
+        } catch (error) {
+          const code = apiErrorCode(error);
+          const sameSession =
+            chatRef.current.sessionId === sessionId &&
+            chatRef.current.runId === runId;
+          const recoverableDisconnect =
+            sameSession &&
+            code === "SESSION_NOT_ACTIVE" &&
+            !chatRef.current.pendingPermission;
+          if (!recoverableDisconnect) throw error;
+          dispatchChat({ type: "recovery-started" });
+          setOperationMessage("连接已断开，正在恢复会话并重新发送这条消息…");
+          setLiveMessage("连接已断开，正在恢复会话。");
+          const recoveryGeneration = beginTransition();
+          expectedGeneration = recoveryGeneration;
+          try {
+            const loadedProfile =
+              conversations.find((item) => item.sessionId === sessionId)
+                ?.profileId ??
+              selectedProfile?.id ??
+              null;
+            const recovered = await startSession(
+              {
+                mode: "resume",
+                sessionId,
+                profileId: loadedProfile,
+                title: null,
+              },
+              recoveryGeneration,
+            );
+            sessionId = recovered.sessionId;
+            runId = recovered.runId;
+            result = await commands.sendClaudeMessage({
+              sessionId,
+              runId,
+              composition,
+            });
+            dispatchChat({ type: "recovery-cleared" });
+            setOperationMessage("会话已自动恢复，消息已重新发送。");
+          } catch (recoveryError) {
+            dispatchChat({ type: "recovery-cleared" });
+            throw recoveryError;
+          }
+        }
+        const latest = chatRef.current;
+        if (
+          !transitionGenerationMatches(
+            transitionFenceRef.current,
+            expectedGeneration,
+          ) ||
+          transitionBusyRef.current ||
+          latest.sessionId !== sessionId ||
+          latest.runId !== runId
+        ) {
+          return;
+        }
+        const text = compositionText(result);
+        dispatchChat({
+          type: "turn-message-committed",
+          sessionId,
+          runId,
+          turnId,
+          message: { ...userMessage, content: text, status: "complete" },
+        });
+        if (sentComposer) {
+          dispatchComposer({
+            type: "clearSentContext",
+            sent: sentComposer!,
+            defaultSkills: skillMode === "basic" ? basicDefaultSkills : [],
+          });
+        }
+        setOperationMessage(
+          queued
+            ? "排队消息已发送给 Claude Code。"
+            : "消息已发送给 Claude Code。",
+        );
+        setLiveMessage(
+          queued
+            ? "排队消息已发送给 Claude Code。 "
+            : "消息已发送给 Claude Code。 ",
+        );
+        void conversationsQuery.refetch();
+      } catch (error) {
+        const latest = chatRef.current;
+        if (
+          latest.activeTurnId === turnId &&
+          latest.sessionId &&
+          latest.runId
+        ) {
+          dispatchChat({
+            type: "turn-failed",
+            sessionId: latest.sessionId,
+            runId: latest.runId,
+            turnId,
+            message: error instanceof Error ? error.message : "消息发送失败。",
+          });
+        }
+        reportError(error);
+      } finally {
+        sendInFlightRef.current = false;
+        setSending(false);
+      }
+    },
+    [
+      basicDefaultSkills,
+      skillMode,
+      beginTransition,
+      conversations,
+      conversationsQuery,
+      missingPrerequisites,
+      reportError,
+      selectedProfile?.id,
+      sending,
+      startSession,
+    ],
+  );
+
+  const retryLastTurn = useCallback(() => {
+    const composition = lastCompositionRef.current;
+    if (!composition || sendInFlightRef.current || transitionBusyRef.current)
+      return;
+    void sendMessage({
+      id: "retry-" + Date.now(),
+      composition,
+    });
+  }, [sendMessage]);
+  const runTaskTemplate = useCallback(
+    (template: TaskTemplate, details?: string) => {
+      const prompt = details?.trim()
+        ? template.prompt + "\n\n用户补充信息：\n" + details.trim()
+        : template.prompt;
+      setActiveActivity("chat");
+      setPanelOpen(true);
+      const current = chatRef.current;
+      const activeTurn =
+        current.turnStatus === "running" ||
+        current.turnStatus === "awaiting-permission" ||
+        Boolean(current.pendingPermission);
+      if (activeTurn || sendInFlightRef.current || transitionBusyRef.current) {
+        dispatchComposer({ type: "setOriginalPrompt", value: prompt });
+        setOperationMessage("当前回合完成后，请发送已放入输入框的任务。");
+        return;
+      }
+      const base = buildCompositionRequest(composerRef.current);
+      const queued: QueuedPrompt = {
+        id: "task-" + Date.now() + "-" + template.id,
+        composition: {
+          ...base,
+          originalPrompt: prompt,
+          enhancedPrompt: null,
+          useEnhanced: false,
+        },
+      };
+      void sendMessage(queued);
+    },
+    [sendMessage],
+  );
+
+  const runExampleTask = useCallback(() => {
+    persistOnboardingComplete();
+    setOnboardingOpen(false);
+    runTaskTemplate(TASK_TEMPLATES[0]);
+  }, [runTaskTemplate]);
+
+  useEffect(() => {
+    if (
+      queuedPrompts.length === 0 ||
+      sendInFlightRef.current ||
+      transitionBusyRef.current ||
+      sending
+    ) {
+      return;
+    }
+    const current = chatRef.current;
+    if (
+      current.turnStatus === "running" ||
+      current.turnStatus === "awaiting-permission" ||
+      current.pendingPermission ||
+      current.lifecycle === "starting" ||
+      current.lifecycle === "stopping"
+    ) {
+      return;
+    }
+    const queued = queuedPromptsRef.current[0];
+    if (!queued) return;
+    const rest = queuedPromptsRef.current.slice(1);
+    queuedPromptsRef.current = rest;
+    setQueuedPrompts(rest);
+    void sendMessage(queued);
+  }, [
+    chat.lifecycle,
+    chat.turnStatus,
+    queuedPrompts.length,
+    sendMessage,
+    sending,
+    transitionBusy,
+  ]);
+  const renameConversationMutation = useMutation({
+    mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
+      commands.renameConversation(sessionId, title),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["conversations"], next);
+      setOperationMessage("对话名称已更新。");
+    },
+    onError: reportError,
+  });
+  const favoriteConversationMutation = useMutation({
+    mutationFn: (conversation: ConversationSummary) =>
+      commands.setConversationFavorite(
+        conversation.sessionId,
+        !conversation.favorite,
+      ),
+    onSuccess: (next) => queryClient.setQueryData(["conversations"], next),
+    onError: reportError,
+  });
+  const archiveConversationMutation = useMutation({
+    mutationFn: (conversation: ConversationSummary) =>
+      commands.setConversationArchived(
+        conversation.sessionId,
+        !conversation.archived,
+      ),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["conversations"], next);
+      setOperationMessage("对话归档状态已更新。");
+    },
+    onError: reportError,
+  });
+  const exportConversation = useCallback(
+    async (conversation: ConversationSummary) => {
+      try {
+        const history = await commands.loadConversationHistory(
+          conversation.sessionId,
+        );
+        const markdown = [
+          "# " + (conversation.title || "未命名对话"),
+          "",
+          ...history.messages.map((message) => {
+            const role =
+              message.role === "user"
+                ? "用户"
+                : message.role === "assistant"
+                  ? "Claude"
+                  : "系统";
+            return "## " + role + "\n\n" + message.content;
+          }),
+          "",
+        ].join("\n");
+        await writeText(markdown);
+        setOperationMessage("对话已导出到剪贴板。");
+      } catch (error) {
+        reportError(error);
+      }
+    },
+    [reportError],
+  );
+  const handleNewChat = useCallback(() => {
+    if (sendInFlightRef.current) return;
+    queuedPromptsRef.current = [];
+    setQueuedPrompts([]);
+    const generation = beginTransition();
+    const current = chatRef.current;
+    if (
+      current.sessionId &&
+      !["disconnected", "exited", "failed", "timed-out"].includes(
+        current.lifecycle,
+      )
+    ) {
+      const oldSessionId = current.sessionId;
+      if (current.runId) {
+        dispatchChat({
+          type: "session-leaving",
+          sessionId: oldSessionId,
+          runId: current.runId,
+        });
+      }
+      void commands
+        .stopClaudeSession(oldSessionId, current.runId ?? "")
+        .catch(reportError)
+        .finally(() => {
+          if (!transitionIsCurrent(generation)) return;
+          activeChannelRef.current = null;
+          dispatchChat({ type: "reset", generation });
+          finishTransition(generation);
+        });
+      return;
+    }
+    activeChannelRef.current = null;
+    dispatchChat({ type: "reset", generation });
+    finishTransition(generation);
+  }, [beginTransition, finishTransition, reportError, transitionIsCurrent]);
+
+  const waitForSessionRelease = useCallback(async () => {
+    const current = chatRef.current;
+    if (
+      !current.sessionId ||
+      ["disconnected", "exited", "failed", "timed-out"].includes(
+        current.lifecycle,
+      )
+    ) {
+      return;
+    }
+    if (!current.runId) return;
+    await commands.stopClaudeSession(current.sessionId, current.runId);
+  }, []);
+
+  const recoverCurrentSession = useCallback(async () => {
+    const current = chatRef.current;
+    if (
+      !current.sessionId ||
+      !current.runId ||
+      current.recoveryStatus === "recovering"
+    ) {
+      return;
+    }
+    dispatchChat({ type: "recovery-started" });
+    const generation = beginTransition();
+    try {
+      if (!current.processReleased) {
+        await commands.stopClaudeSession(current.sessionId, current.runId);
+      }
+      if (!transitionIsCurrent(generation)) return;
+      const loadedProfile =
+        conversations.find((item) => item.sessionId === current.sessionId)
+          ?.profileId ??
+        selectedProfile?.id ??
+        null;
+      await startSession(
+        {
+          mode: "resume",
+          sessionId: current.sessionId,
+          profileId: loadedProfile,
+          title: null,
+        },
+        generation,
+      );
+      dispatchChat({ type: "recovery-cleared" });
+      setOperationMessage("会话已恢复，可以继续对话。");
+      setLiveMessage("会话已恢复，可以继续发送消息。");
+    } catch (error) {
+      dispatchChat({ type: "recovery-cleared" });
+      reportError(error);
+    }
+  }, [
+    beginTransition,
+    conversations,
+    reportError,
+    selectedProfile?.id,
+    startSession,
+    transitionIsCurrent,
+  ]);
+
+  const handleConversationSelect = useCallback(
+    async (conversation: ConversationSummary) => {
+      if (sendInFlightRef.current) return;
+      queuedPromptsRef.current = [];
+      setQueuedPrompts([]);
+      const generation = beginTransition();
+      try {
+        const current = chatRef.current;
+        if (current.sessionId && current.runId) {
+          dispatchChat({
+            type: "session-leaving",
+            sessionId: current.sessionId,
+            runId: current.runId,
+          });
+        }
+        await waitForSessionRelease();
+        if (!transitionIsCurrent(generation)) return;
+        activeChannelRef.current = null;
+        const history = await commands.loadConversationHistory(
+          conversation.sessionId,
+        );
+        if (!transitionIsCurrent(generation)) return;
+        dispatchChat({
+          type: "reset",
+          generation,
+          sessionId: history.sessionId,
+        });
+        dispatchChat({
+          type: "history",
+          generation,
+          sessionId: history.sessionId,
+          messages: history.messages,
+        });
+        // Lazy resume: only the transcript is loaded here. The CLI process is
+        // not spawned until the user actually sends a message, so switching
+        // between conversations no longer pays the ~seconds of process teardown
+        // + spawn. sendMessage() picks up mode "resume" when it sees a loaded
+        // conversation without a live run.
+        setOperationMessage("已加载对话历史。");
+        finishTransition(generation);
+      } catch (error) {
+        if (transitionIsCurrent(generation)) {
+          finishTransition(generation);
+          reportError(error);
+        }
+      }
+    },
+    [
+      beginTransition,
+      finishTransition,
+      reportError,
+      transitionIsCurrent,
+      waitForSessionRelease,
+    ],
+  );
+
+  const respondToPermission = useCallback(
+    async (requestId: string, behavior: PermissionDecision) => {
+      const current = chatRef.current;
+      const sessionId = current.sessionId;
+      const runId = current.runId;
+      const pending = current.pendingPermission;
+      if (
+        !sessionId ||
+        !runId ||
+        !pending ||
+        pending.requestId !== requestId ||
+        pendingPermissionRef.current === requestId
+      )
+        return;
+
+      pendingPermissionRef.current = requestId;
+      setPermissionBusy(true);
+      const rule = permissionRuleFor(pending);
+      const transportBehavior =
+        behavior === "deny-interrupt"
+          ? "deny-interrupt"
+          : behavior === "deny"
+            ? "deny"
+            : "allow";
+
+      try {
+        if (behavior === "session") {
+          const rules = sessionPermissionRulesRef.current[sessionId] ?? [];
+          sessionPermissionRulesRef.current[sessionId] = [
+            ...rules.filter(
+              (item) =>
+                item.toolName !== rule.toolName ||
+                item.command !== rule.command ||
+                item.cwd !== rule.cwd,
+            ),
+            { id: "session-" + requestId, ...rule },
+          ];
+        } else if (behavior === "always") {
+          const next = await commands.savePermissionRule(rule);
+          queryClient.setQueryData(["permission-rules"], next);
+        }
+
+        dispatchChat({
+          type: "permission-response",
+          sessionId,
+          runId,
+          requestId,
+          behavior: transportBehavior === "allow" ? "allow" : "deny",
+          interrupted: transportBehavior === "deny-interrupt",
+        });
+        await commands.respondToPermission({
+          sessionId,
+          runId,
+          requestId,
+          behavior: transportBehavior,
+        });
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code?: unknown }).code ?? "")
+            : undefined;
+        dispatchChat({
+          type: "permission-response-failed",
+          sessionId,
+          runId,
+          requestId,
+          code,
+        });
+        reportError(error);
+      } finally {
+        if (pendingPermissionRef.current === requestId) {
+          pendingPermissionRef.current = null;
+        }
+        setPermissionBusy(false);
+      }
+    },
+    [queryClient, reportError],
+  );
+
+  const retryPermission = useCallback(
+    async (requestId: string) => {
+      const current = chatRef.current;
+      if (
+        !current.sessionId ||
+        !current.runId ||
+        current.pendingPermission?.requestId !== requestId ||
+        pendingPermissionRef.current
+      ) {
+        return;
+      }
+      pendingPermissionRef.current = requestId;
+      setPermissionBusy(true);
+      try {
+        await commands.retryPermission(
+          current.sessionId,
+          current.runId,
+          requestId,
+        );
+        dispatchChat({
+          type: "permission-retried",
+          sessionId: current.sessionId,
+          runId: current.runId,
+          requestId,
+          expiresAt: Date.now() + 120_000,
+        });
+        setOperationMessage("权限请求已重试，请在倒计时结束前确认。");
+      } catch (error) {
+        reportError(error);
+      } finally {
+        if (pendingPermissionRef.current === requestId) {
+          pendingPermissionRef.current = null;
+        }
+        setPermissionBusy(false);
+      }
+    },
+    [reportError],
+  );
+
+  useEffect(() => {
+    const pending = chat.pendingPermission;
+    const sessionId = chat.sessionId;
+    if (
+      !pending ||
+      !sessionId ||
+      !chat.runId ||
+      pending.permissionExpiresAt === 0 ||
+      (pending.permissionExpiresAt != null &&
+        pending.permissionExpiresAt <= Date.now())
+    )
+      return;
+    const risk = classifyPermissionRisk(pending);
+    const persistent = permissionRulesQuery.data ?? [];
+    const sessionRules = sessionPermissionRulesRef.current[sessionId] ?? [];
+    const hasSavedRule = [...persistent, ...sessionRules].some((rule) =>
+      permissionRuleMatches(rule, pending),
+    );
+    if (risk.level === "low" || hasSavedRule) {
+      void respondToPermission(pending.requestId!, "allow");
+    }
+  }, [
+    chat.pendingPermission,
+    chat.sessionId,
+    chat.runId,
+    permissionRulesQuery.data,
+    respondToPermission,
+  ]);
+
+  const handleExperienceModeChange = useCallback(
+    (nextMode: ExperienceMode) => {
+      setExperienceMode(nextMode);
+      persistExperienceMode(nextMode);
+      const nextSkillMode: SkillPanelMode =
+        nextMode === "guided" ? "basic" : "advanced";
+      setSkillMode(nextSkillMode);
+      persistSkillPanelMode(nextSkillMode);
+      if (nextSkillMode === "basic") {
+        dispatchComposer({
+          type: "applyBasicDefaults",
+          skills: basicDefaultSkills,
+        });
+      }
+    },
+    [basicDefaultSkills],
+  );
+
+  const handleThemeChange = useCallback((nextTheme: AppTheme) => {
+    setTheme(nextTheme);
+    persistTheme(nextTheme);
+  }, []);
+
+  const selectedIds = new Set(
+    composer.selectedSkills.map((skill) => skill.instanceId),
+  );
+  const handleSkillModeChange = useCallback(
+    (nextMode: SkillPanelMode) => {
+      setSkillMode(nextMode);
+      persistSkillPanelMode(nextMode);
+      if (nextMode === "basic") {
+        dispatchComposer({
+          type: "applyBasicDefaults",
+          skills: basicDefaultSkills,
+        });
+      }
+    },
+    [basicDefaultSkills],
+  );
+  const sidebar = bootstrap ? (
+    <LeftSidebar
+      preferences={bootstrap.preferences}
+      inventory={bootstrap.skills}
+      selectedIds={selectedIds}
+      search={search}
+      skillsRefreshing={refreshSkills.isPending}
+      skillInventoryBusy={skillInventoryBusy}
+      skillMode={skillMode}
+      onSkillModeChange={handleSkillModeChange}
+      onSearch={setSearch}
+      onChooseProject={() => rootsMutation.mutate("project")}
+      onAddRoot={() => rootsMutation.mutate("additional")}
+      onRefreshSkills={() => {
+        if (!skillInventoryBusy) refreshSkills.mutate();
+      }}
+      onToggleSkill={(skill) =>
+        dispatchComposer({ type: "toggleSkill", skill })
+      }
+      onChangeSkillState={(skill, value) => {
+        if (!skillInventoryBusy) skillMutation.mutate({ skill, value });
+      }}
+      onPreviewSkill={(skill) => {
+        setLeftDrawerOpen(false);
+        setPreviewedSkill(skill);
+      }}
+    />
+  ) : null;
+
+  const inspector = bootstrap ? (
+    <InspectorPane
+      attachments={composer.attachments}
+      attachmentPreview={attachmentPreview}
+      attachmentPreviewLoading={attachmentPreviewMutation.isPending}
+      promptPreviewRequest={promptPreviewRequest}
+      preview={composer.preview}
+      previewStale={composer.previewStale}
+      ollama={bootstrap.ollama}
+      operationMessage={operationMessage}
+      nativeNotificationsEnabled={
+        bootstrap.preferences.nativeNotificationsEnabled
+      }
+      notificationSaving={notificationMutation.isPending}
+      onPreviewAttachment={(handle) => attachmentPreviewMutation.mutate(handle)}
+      onSetNativeNotifications={(enabled) =>
+        notificationMutation.mutate(enabled)
+      }
+      onRemoveAttachment={(handle) => removeAttachmentMutation.mutate(handle)}
+      onMoveAttachment={(handle, direction) =>
+        dispatchComposer({ type: "moveAttachment", handle, direction })
+      }
+    />
+  ) : null;
+
+  const contextPanel = (() => {
+    if (activeActivity === "chat") {
+      return (
+        <ConversationPanel
+          conversations={conversations}
+          activeSessionId={chat.sessionId}
+          loading={conversationsQuery.isPending}
+          onSelect={handleConversationSelect}
+          onDelete={(conversation) =>
+            deleteConversationMutation.mutate(conversation)
+          }
+          onNew={handleNewChat}
+          onRename={(conversation, title) =>
+            renameConversationMutation.mutate({
+              sessionId: conversation.sessionId,
+              title,
+            })
+          }
+          onFavorite={(conversation) =>
+            favoriteConversationMutation.mutate(conversation)
+          }
+          onArchive={(conversation) =>
+            archiveConversationMutation.mutate(conversation)
+          }
+          onExport={(conversation) => void exportConversation(conversation)}
+        />
+      );
+    }
+    if (activeActivity === "tasks") {
+      return <TaskPanel busy={lifecycleBusy} onRun={runTaskTemplate} />;
+    }
+    if (activeActivity === "runtime") {
+      return (
+        <RunCenter
+          chat={chat}
+          queuedCount={queuedPrompts.length}
+          onStop={() => void stopSession()}
+          onRetry={retryLastTurn}
+          onRecover={() => void recoverCurrentSession()}
+          onOpenPermission={() => {
+            setActiveActivity("chat");
+            setPanelOpen(false);
+          }}
+        />
+      );
+    }
+    if (activeActivity === "skills") return sidebar;
+    if (activeActivity === "models") {
+      return (
+        <ModelManager
+          profiles={profiles}
+          loading={profilesQuery.isPending}
+          busy={modelMutationBusy}
+          model={bootstrap?.model}
+          modelSaving={modelMutation.isPending}
+          onSaveModel={(value) => modelMutation.mutate({ value, clear: false })}
+          onClearModel={() => modelMutation.mutate({ value: "", clear: true })}
+          onAdd={() => setModelDialog(null)}
+          onEdit={(profile) => setModelDialog(profile)}
+          onSelect={(profileId) => selectProfileMutation.mutate(profileId)}
+          onDelete={(profileId) => deleteProfileMutation.mutate(profileId)}
+        />
+      );
+    }
+    if (activeActivity === "settings" && bootstrap) {
+      return (
+        <SettingsPanel
+          bootstrap={bootstrap}
+          experienceMode={experienceMode}
+          theme={theme}
+          notificationSaving={notificationMutation.isPending}
+          ollamaSaving={ollamaMutation.isPending}
+          onExperienceModeChange={handleExperienceModeChange}
+          onThemeChange={handleThemeChange}
+          onOpenOnboarding={() => setOnboardingOpen(true)}
+          onSetNativeNotifications={(enabled) =>
+            notificationMutation.mutate(enabled)
+          }
+          onSelectOllamaModel={(model) => ollamaMutation.mutate(model)}
+          projectMemory={projectMemoryQuery.data}
+          projectMemorySaving={projectMemoryMutation.isPending}
+          onSaveProjectMemory={(input) => projectMemoryMutation.mutate(input)}
+          environmentReport={environmentReport}
+          environmentLoading={environmentMutation.isPending}
+          environmentRepairId={environmentRepairId}
+          onRunEnvironmentCheck={() => environmentMutation.mutate()}
+          onRepairEnvironmentCheck={(check) =>
+            environmentRepairMutation.mutate(check.id)
+          }
+          onChooseProject={() => rootsMutation.mutate("project")}
+          onOpenModels={() => setActiveActivity("models")}
+          updateInfo={updateInfo}
+          updateLoading={updateMutation.isPending}
+          downloadedUpdate={downloadedUpdate}
+          downloadLoading={downloadUpdateMutation.isPending}
+          diagnosticResult={diagnosticResult}
+          diagnosticLoading={diagnosticMutation.isPending}
+          onCheckUpdate={() => updateMutation.mutate()}
+          onDownloadUpdate={() => {
+            if (updateInfo?.installerUrl && updateInfo.latestVersion) {
+              downloadUpdateMutation.mutate({
+                url: updateInfo.installerUrl,
+                version: updateInfo.latestVersion,
+              });
+            }
+          }}
+          onLaunchUpdate={() => {
+            if (downloadedUpdate)
+              void commands
+                .launchUpdate(downloadedUpdate.path)
+                .catch(reportError);
+          }}
+          onCollectDiagnostics={() => diagnosticMutation.mutate()}
+        />
+      );
+    }
+    return inspector;
+  })();
 
   if (bootstrapQuery.isPending) {
     return (
@@ -408,98 +1966,124 @@ export default function App() {
     );
   }
 
-  const selectedIds = new Set(
-    composer.selectedSkills.map((skill) => skill.instanceId),
-  );
-  const sidebar = (
-    <LeftSidebar
-      preferences={bootstrap.preferences}
-      model={bootstrap.model}
-      inventory={bootstrap.skills}
-      selectedIds={selectedIds}
-      search={search}
-      modelSaving={modelMutation.isPending}
-      skillsRefreshing={refreshSkills.isPending}
-      skillInventoryBusy={skillInventoryBusy}
-      onSearch={setSearch}
-      onSaveModel={(value) => modelMutation.mutate({ value, clear: false })}
-      onClearModel={() => modelMutation.mutate({ value: "", clear: true })}
-      onChooseProject={() => rootsMutation.mutate("project")}
-      onAddRoot={() => rootsMutation.mutate("additional")}
-      onRefreshSkills={() => {
-        if (!skillInventoryBusy) refreshSkills.mutate();
-      }}
-      onToggleSkill={(skill) => dispatch({ type: "toggleSkill", skill })}
-      onChangeSkillState={(skill, value) => {
-        if (!skillInventoryBusy) skillMutation.mutate({ skill, value });
-      }}
-      onPreviewSkill={(skill) => {
-        setLeftDrawerOpen(false);
-        setPreviewedSkill(skill);
-      }}
-    />
-  );
-  const inspector = (
-    <InspectorPane
-      attachments={composer.attachments}
-      preview={composer.preview}
-      previewStale={composer.previewStale}
-      ollama={bootstrap.ollama}
-      operationMessage={operationMessage}
-      nativeNotificationsEnabled={
-        bootstrap.preferences.nativeNotificationsEnabled
-      }
-      notificationSaving={notificationMutation.isPending}
-      onSetNativeNotifications={(enabled) =>
-        notificationMutation.mutate(enabled)
-      }
-      onRemoveAttachment={(handle) => removeAttachmentMutation.mutate(handle)}
-      onMoveAttachment={(handle, direction) =>
-        dispatch({ type: "moveAttachment", handle, direction })
-      }
-    />
-  );
-
   return (
-    <div className="app-frame">
+    <div className="app-frame" data-theme={theme}>
       <a className="skip-link" href="#main-content">
-        跳到 Prompt 编辑器
+        跳到对话编辑器
       </a>
-      <div className="app-grid">
-        <div className="desktop-left">{sidebar}</div>
-        <ComposerPane
-          originalPrompt={composer.originalPrompt}
-          enhancedPrompt={composer.enhancedPrompt}
-          useEnhanced={composer.useEnhanced}
-          selectedSkills={composer.selectedSkills}
-          ollama={bootstrap.ollama}
-          enhancing={enhancementMutation.isPending}
-          composing={previewMutation.isPending}
-          copying={copyMutation.isPending}
-          canCompose={canCompose}
-          onPromptChange={(value) =>
-            dispatch({ type: "setOriginalPrompt", value })
-          }
-          onUseEnhanced={(value) => dispatch({ type: "setUseEnhanced", value })}
-          onEnhance={() => {
-            const model = bootstrap.ollama.selectedModel;
-            if (model) {
-              enhancementMutation.mutate({
-                prompt: composer.originalPrompt,
-                model,
-              });
-            }
+      <div
+        className="chat-shell"
+        style={
+          panelOpen
+            ? undefined
+            : { gridTemplateColumns: "var(--rail-width) minmax(0, 1fr)" }
+        }
+      >
+        <ActivityRail
+          active={activeActivity}
+          onChange={(activity) => {
+            setActiveActivity(activity);
+            setPanelOpen(true);
           }}
-          onAddFiles={() => importMutation.mutate(undefined)}
-          onPreview={handlePreview}
-          onCopy={handleCopy}
-          onRemoveSkill={(instanceId) =>
-            dispatch({ type: "removeSkill", instanceId })
-          }
-          onOpenLeft={() => setLeftDrawerOpen(true)}
-          onOpenRight={() => setRightDrawerOpen(true)}
+          attachmentCount={composer.attachments.length}
+          skillCount={bootstrap.skills.skills.length}
         />
-        <div className="desktop-right">{inspector}</div>
+        {panelOpen && <aside className="context-panel">{contextPanel}</aside>}
+        <main className="chat-workspace" id="main-content">
+          <ChatHeader
+            title={
+              conversations.find(
+                (conversation) => conversation.sessionId === chat.sessionId,
+              )?.title ?? "新对话"
+            }
+            profile={selectedProfile}
+            status={runState}
+            panelOpen={panelOpen}
+            onTogglePanel={() => setPanelOpen((open) => !open)}
+            onSelectModel={() => {
+              setActiveActivity("models");
+              setPanelOpen(true);
+            }}
+            onNewChat={handleNewChat}
+          />
+          <ChatTranscript
+            messages={chat.messages}
+            activePermission={chat.pendingPermission}
+            permissionBusy={permissionBusy}
+            activeTool={chat.activeTool}
+            onPermission={respondToPermission}
+            onRetryPermission={retryPermission}
+          />
+          <ChatComposer
+            value={composer.originalPrompt}
+            busy={lifecycleBusy}
+            queuedCount={queuedPrompts.length}
+            queuedItems={queuedPrompts.map((item) => ({
+              id: item.id,
+              preview:
+                item.composition.originalPrompt
+                  .trim()
+                  .replace(/\\s+/g, " ")
+                  .slice(0, 120) || "空消息",
+            }))}
+            onRemoveQueued={removeQueuedPrompt}
+            sessionActive={Boolean(
+              chat.sessionId &&
+              !["disconnected", "exited", "failed", "timed-out"].includes(
+                chat.lifecycle,
+              ),
+            )}
+            attachments={composer.attachments}
+            selectedSkills={composer.selectedSkills}
+            ollamaAvailable={bootstrap.ollama.online}
+            ollamaSelectedModel={bootstrap.ollama.selectedModel}
+            enhancedPrompt={composer.enhancedPrompt}
+            useEnhanced={composer.useEnhanced}
+            showFinal={showFinalPrompt}
+            finalText={composer.preview?.text ?? null}
+            enhancing={enhancementMutation.isPending}
+            onChange={(value) =>
+              dispatchComposer({ type: "setOriginalPrompt", value })
+            }
+            onUseEnhanced={(value) =>
+              dispatchComposer({ type: "setUseEnhanced", value })
+            }
+            onToggleFinal={handleToggleFinalPrompt}
+            onSend={() => void sendMessage()}
+            onStop={() => void stopSession()}
+            onAddFiles={() => importMutation.mutate(undefined)}
+            onEnhance={() => {
+              const model = bootstrap.ollama.selectedModel;
+              if (model) {
+                enhancementMutation.mutate({
+                  prompt: composer.originalPrompt,
+                  model,
+                });
+              } else {
+                const message =
+                  "Ollama 在线但未选择本地模型，无法增强。请在模型配置里选择一个模型。";
+                setOperationMessage(message);
+                setLiveMessage(message);
+              }
+            }}
+          />
+          <div className="chat-composer-extra-actions" aria-label="Prompt 操作">
+            <Button
+              variant="ghost"
+              disabled={!canCompose || previewMutation.isPending}
+              onClick={handlePreview}
+            >
+              {previewMutation.isPending ? "预览中…" : "预览最终 Prompt"}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={!canCompose || copyMutation.isPending}
+              onClick={handleCopy}
+            >
+              {copyMutation.isPending ? "复制中…" : "复制 Prompt"}
+            </Button>
+          </div>
+        </main>
       </div>
       <StatusBar
         project={bootstrap.preferences.selectedProjectRoot?.path ?? null}
@@ -551,6 +2135,44 @@ export default function App() {
         )}
       </Drawer>
 
+      <OnboardingDialog
+        open={onboardingOpen}
+        claudeCliAvailable={claudeOk}
+        projectLabel={bootstrap.preferences.selectedProjectRoot?.label ?? null}
+        modelReady={modelOk}
+        experienceMode={experienceMode}
+        ollama={bootstrap.ollama}
+        busy={onboardingBusy || rootsMutation.isPending}
+        exampleBusy={sending || transitionBusy}
+        ollamaSaving={ollamaMutation.isPending}
+        onExperienceModeChange={handleExperienceModeChange}
+        onCopyInstallCommand={async () => {
+          setOnboardingBusy(true);
+          try {
+            await writeText("irm https://claude.ai/install.ps1 | iex");
+            const message =
+              "安装命令已复制，请在 PowerShell 中运行后回来点「重新检测」。";
+            setOperationMessage(message);
+            setLiveMessage(message);
+          } catch {
+            setOperationMessage("复制失败，请手动复制安装命令。");
+          } finally {
+            setOnboardingBusy(false);
+          }
+        }}
+        onRecheckClaude={() => {
+          setOnboardingBusy(true);
+          void bootstrapQuery.refetch().finally(() => setOnboardingBusy(false));
+        }}
+        onSelectProject={() => rootsMutation.mutate("project")}
+        onAddModel={() => setModelDialog(null)}
+        onSelectOllamaModel={(model) => ollamaMutation.mutate(model)}
+        onRunExample={runExampleTask}
+        onClose={() => {
+          persistOnboardingComplete();
+          setOnboardingOpen(false);
+        }}
+      />
       {sensitiveQueue[0] && (
         <SensitiveImportDialog
           attachment={sensitiveQueue[0]}
@@ -558,6 +2180,16 @@ export default function App() {
           onCancel={() => setSensitiveQueue((queue) => queue.slice(1))}
           onConfirm={() =>
             confirmSensitiveMutation.mutate(sensitiveQueue[0].confirmationToken)
+          }
+        />
+      )}
+      {modelDialog !== false && (
+        <AddModelDialog
+          profile={modelDialog}
+          busy={modelDialogBusy}
+          onClose={() => setModelDialog(false)}
+          onSave={(profile, promptForApiKey) =>
+            profileMutation.mutate({ profile, promptForApiKey })
           }
         />
       )}
@@ -578,4 +2210,8 @@ function buildCompositionRequest(
     })),
     attachmentHandles: composer.attachments.map((item) => item.handle),
   };
+}
+
+function compositionText(result: CompositionResult) {
+  return result.text;
 }

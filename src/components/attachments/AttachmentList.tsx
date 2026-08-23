@@ -3,6 +3,7 @@ import {
   ChevronUp,
   File,
   FileImage,
+  Eye,
   FileText,
   Trash2,
 } from "lucide-react";
@@ -13,6 +14,7 @@ interface Props {
   attachments: AttachmentRecord[];
   onRemove: (handle: string) => void;
   onMove: (handle: string, direction: -1 | 1) => void;
+  onPreview: (handle: string) => void;
 }
 
 function formatBytes(bytes: number) {
@@ -21,7 +23,12 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-export function AttachmentList({ attachments, onRemove, onMove }: Props) {
+export function AttachmentList({
+  attachments,
+  onRemove,
+  onMove,
+  onPreview,
+}: Props) {
   if (!attachments.length) {
     return (
       <div className="empty-state">
@@ -39,7 +46,7 @@ export function AttachmentList({ attachments, onRemove, onMove }: Props) {
           <article className="attachment-item" key={attachment.handle}>
             <Icon size={17} aria-hidden="true" />
             <div className="attachment-item__body">
-              <strong title={attachment.path}>{attachment.name}</strong>
+              <strong>{attachment.name}</strong>
               <span>
                 {attachment.kind.toUpperCase()} ·{" "}
                 {formatBytes(attachment.rawBytes)}
@@ -49,6 +56,16 @@ export function AttachmentList({ attachments, onRemove, onMove }: Props) {
               ))}
             </div>
             <div className="attachment-item__actions">
+              <Button
+                variant="ghost"
+                className="icon-button icon-button--small"
+                icon={<Eye size={14} />}
+                aria-label={"查看 " + attachment.name}
+                title="查看附件内容"
+                onClick={() => onPreview(attachment.handle)}
+              >
+                <span className="sr-only">查看内容</span>
+              </Button>
               <Button
                 variant="ghost"
                 className="icon-button icon-button--small"

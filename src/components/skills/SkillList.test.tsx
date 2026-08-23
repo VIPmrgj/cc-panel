@@ -22,25 +22,98 @@ const skill: SkillRecord = {
   warnings: [],
 };
 
+function renderExpanded(props: Partial<Parameters<typeof SkillList>[0]> = {}) {
+  const result = render(
+    <SkillList
+      skills={[skill]}
+      selectedIds={new Set()}
+      search=""
+      refreshing={false}
+      pending={false}
+      mode="basic"
+      onModeChange={vi.fn()}
+      onSearch={vi.fn()}
+      onRefresh={vi.fn()}
+      onToggleSelected={vi.fn()}
+      onChangeState={vi.fn()}
+      onPreview={vi.fn()}
+      {...props}
+    />,
+  );
+  return result;
+}
+
 describe("SkillList", () => {
-  it("serializes refresh and override controls while inventory is busy", async () => {
-    const onRefresh = vi.fn();
-    const onChangeState = vi.fn();
-    const { rerender } = render(
+  it("is collapsed by default and expands on the header toggle", async () => {
+    renderExpanded();
+    expect(screen.getByRole("button", { name: /Skills/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Skills/ }));
+    expect(screen.getByRole("button", { name: "简洁显示" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "Test Skill" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Skills/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("keeps advanced controls hidden in basic mode", async () => {
+    const onModeChange = vi.fn();
+    const { rerender } = renderExpanded({
+      mode: "basic",
+      onModeChange,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Skills/ }));
+    expect(
+      screen.queryByRole("combobox", { name: "Test Skill 详细状态" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "预览 Test Skill" }),
+    ).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "完整控制" }));
+    expect(onModeChange).toHaveBeenCalledWith("advanced");
+
+    rerender(
       <SkillList
         skills={[skill]}
         selectedIds={new Set()}
         search=""
         refreshing={false}
-        pending
+        pending={false}
+        mode="advanced"
+        onModeChange={onModeChange}
         onSearch={vi.fn()}
-        onRefresh={onRefresh}
+        onRefresh={vi.fn()}
         onToggleSelected={vi.fn()}
-        onChangeState={onChangeState}
+        onChangeState={vi.fn()}
         onPreview={vi.fn()}
       />,
     );
+    expect(
+      screen.getByRole("combobox", { name: "Test Skill 详细状态" }),
+    ).toBeInTheDocument();
+  });
 
+  it("serializes refresh and override controls while inventory is busy", async () => {
+    const onRefresh = vi.fn();
+    const onChangeState = vi.fn();
+    const { rerender } = renderExpanded({
+      pending: true,
+      mode: "advanced",
+      onRefresh,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Skills/ }));
     expect(
       screen.getByRole("button", { name: "刷新 Skill 清单" }),
     ).toBeDisabled();
@@ -58,6 +131,8 @@ describe("SkillList", () => {
         search=""
         refreshing={false}
         pending={false}
+        mode="advanced"
+        onModeChange={vi.fn()}
         onSearch={vi.fn()}
         onRefresh={onRefresh}
         onToggleSelected={vi.fn()}
