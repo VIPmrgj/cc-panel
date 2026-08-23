@@ -48,6 +48,7 @@ describe("OnboardingDialog", () => {
   it("offers Claude installation and recheck when Claude is missing", async () => {
     const props = makeProps({ claudeCliAvailable: false });
     render(<OnboardingDialog {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
     await userEvent.click(screen.getByRole("button", { name: "复制安装命令" }));
     expect(props.onCopyInstallCommand).toHaveBeenCalledTimes(1);
     expect(
@@ -58,6 +59,8 @@ describe("OnboardingDialog", () => {
   it("lets the user choose a project directory", async () => {
     const props = makeProps({ projectLabel: null });
     render(<OnboardingDialog {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
     await userEvent.click(screen.getByRole("button", { name: "选择项目目录" }));
     expect(props.onSelectProject).toHaveBeenCalledTimes(1);
   });
@@ -65,10 +68,13 @@ describe("OnboardingDialog", () => {
   it("lets the user add a model and choose the display experience", async () => {
     const props = makeProps({ modelReady: false });
     render(<OnboardingDialog {...props} />);
-    await userEvent.click(screen.getByRole("button", { name: "添加模型配置" }));
-    expect(props.onAddModel).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole("button", { name: /^完整体验/ }));
     expect(props.onExperienceModeChange).toHaveBeenCalledWith("complete");
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "添加模型配置" }));
+    expect(props.onAddModel).toHaveBeenCalledTimes(1);
   });
 
   it("allows skipping even when setup is incomplete", async () => {
@@ -78,14 +84,18 @@ describe("OnboardingDialog", () => {
       modelReady: false,
     });
     render(<OnboardingDialog {...props} />);
-    expect(screen.getByRole("button", { name: "跳过设置" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "跳过设置" }));
+    expect(screen.getByRole("button", { name: "跳过全部" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "跳过全部" }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
   it("can select or disable local prompt optimization", async () => {
     const props = makeProps();
     render(<OnboardingDialog {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }));
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "选择本地 Prompt 优化模型" }),
       "",

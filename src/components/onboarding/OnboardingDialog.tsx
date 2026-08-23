@@ -1,5 +1,7 @@
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clipboard,
   FolderOpen,
   KeyRound,
@@ -7,7 +9,7 @@ import {
   RotateCw,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { OllamaStatus } from "../../api/dto";
 import type { ExperienceMode } from "../../state/experienceMode";
@@ -56,6 +58,20 @@ export function OnboardingDialog({
   const descriptionId = useId();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const [step, setStep] = useState(0);
+  const totalSteps = 6;
+  const stepLabels = [
+    "选择体验方式",
+    "检查 Claude Code",
+    "选择工作文件夹",
+    "选择默认模型",
+    "本地 Prompt 优化",
+    "试运行示例任务",
+  ];
+
+  useEffect(() => {
+    if (open) setStep(0);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,41 +104,49 @@ export function OnboardingDialog({
             <div>
               <h2 id={titleId}>开始使用 CC Panel</h2>
               <p id={descriptionId}>
-                下面的设置都可以跳过，之后也能在设置里重新打开。
+                我们一次只处理一件事；每一步都可以跳过，之后也能在设置里重新打开。
               </p>
             </div>
           </div>
         </header>
 
         <div
-          className="onboarding-mode-picker"
-          role="group"
-          aria-label="显示体验"
+          className="onboarding-mode-step"
+          data-active={step === 0 || undefined}
         >
-          <button
-            type="button"
-            className="onboarding-mode-card"
-            aria-pressed={experienceMode === "guided"}
-            onClick={() => onExperienceModeChange("guided")}
+          <p className="onboarding-step-intro">
+            先选择你希望看到的界面方式，之后随时可以在设置中修改。
+          </p>
+          <div
+            className="onboarding-mode-picker"
+            role="group"
+            aria-label="显示体验"
           >
-            <strong>引导体验</strong>
-            <span>默认收起复杂选项，关键位置提供更多解释。</span>
-          </button>
-          <button
-            type="button"
-            className="onboarding-mode-card"
-            aria-pressed={experienceMode === "complete"}
-            onClick={() => onExperienceModeChange("complete")}
-          >
-            <strong>完整体验</strong>
-            <span>默认显示更多控制项，适合希望快速调整细节的人。</span>
-          </button>
+            <button
+              type="button"
+              className="onboarding-mode-card"
+              aria-pressed={experienceMode === "guided"}
+              onClick={() => onExperienceModeChange("guided")}
+            >
+              <strong>引导体验</strong>
+              <span>默认收起复杂选项，关键位置提供更多解释。</span>
+            </button>
+            <button
+              type="button"
+              className="onboarding-mode-card"
+              aria-pressed={experienceMode === "complete"}
+              onClick={() => onExperienceModeChange("complete")}
+            >
+              <strong>完整体验</strong>
+              <span>默认显示更多控制项，适合希望快速调整细节的人。</span>
+            </button>
+          </div>
+          <p className="onboarding-note">
+            两种体验不减少任何能力，只改变默认显示方式；所有高级选项始终可以找到。
+          </p>
         </div>
-        <p className="onboarding-note">
-          两种体验不减少任何能力，只改变默认显示方式；所有高级选项始终可以找到。
-        </p>
 
-        <div className="onboarding-list">
+        <div className="onboarding-list" data-active-step={step}>
           <OnboardingRow
             icon={<KeyRound size={15} aria-hidden="true" />}
             title="1. 检查 Claude Code"
@@ -249,22 +273,58 @@ export function OnboardingDialog({
           />
         </div>
 
-        <footer className="model-dialog__actions">
+        <div className="onboarding-progress" aria-live="polite">
+          <span>
+            第 {step + 1} 步，共 {totalSteps} 步
+          </span>
+          <strong>{stepLabels[step]}</strong>
+        </div>
+        <footer className="model-dialog__actions onboarding-dialog__footer">
           <button
             type="button"
             className="button button--ghost"
             disabled={busy || exampleBusy}
             onClick={onClose}
           >
-            跳过设置
+            跳过全部
           </button>
-          <Button
-            variant="primary"
-            disabled={busy || exampleBusy}
-            onClick={onClose}
-          >
-            完成设置
-          </Button>
+          <div className="onboarding-dialog__step-actions">
+            {step > 0 && (
+              <button
+                type="button"
+                className="button button--ghost"
+                disabled={busy || exampleBusy}
+                onClick={() => setStep((value) => value - 1)}
+              >
+                <ChevronLeft size={14} aria-hidden="true" />
+                上一步
+              </button>
+            )}
+            <button
+              type="button"
+              className="button button--ghost"
+              disabled={busy || exampleBusy}
+              onClick={() => {
+                if (step >= totalSteps - 1) onClose();
+                else setStep((value) => value + 1);
+              }}
+            >
+              {step >= totalSteps - 1 ? "稍后完成" : "跳过这一步"}
+            </button>
+            <Button
+              variant="primary"
+              disabled={busy || exampleBusy}
+              onClick={() => {
+                if (step >= totalSteps - 1) onClose();
+                else setStep((value) => value + 1);
+              }}
+            >
+              {step >= totalSteps - 1 ? "进入 CC Panel" : "下一步"}
+              {step < totalSteps - 1 && (
+                <ChevronRight size={14} aria-hidden="true" />
+              )}
+            </Button>
+          </div>
         </footer>
       </section>
     </div>
