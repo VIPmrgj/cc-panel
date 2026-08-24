@@ -272,12 +272,7 @@ export default function App() {
     (profile) => profile.selected && profile.hasApiKey,
   );
   const runtimeReady = Boolean(
-    claudeOk &&
-    bootstrap?.nodeVersion &&
-    bootstrap?.npmVersion &&
-    bootstrap?.npmMirrorConfigured &&
-    bootstrap?.powershellAvailable &&
-    bootstrap?.gitAvailable,
+    claudeOk && bootstrap?.nodeVersion && bootstrap?.npmVersion,
   );
   const claudeReady =
     runtimeReady && (Boolean(bootstrap?.claudeCodeConfigured) || modelOk);
@@ -367,22 +362,18 @@ export default function App() {
     setClaudeSetupBusy(true);
     setInstallProgress({
       step: 1,
-      totalSteps: 5,
+      totalSteps: 4,
       phase: "node",
       status: "running",
     });
-    setOperationMessage(
-      "\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\u2026",
-    );
+    setOperationMessage("\u6b63\u5728\u51c6\u5907 Claude Code\u2026");
     setLiveMessage(
-      "\u5c06\u6309\u7167 Node.js\u3001Git\u3001npm \u955c\u50cf\u3001Claude Code \u548c\u9996\u6b21\u914d\u7f6e\u4f9d\u6b21\u5904\u7406\u3002",
+      "\u5c06\u81ea\u52a8\u68c0\u67e5 Node.js\u3001\u5b89\u88c5 Claude Code\uff0c\u5e76\u5b8c\u6210\u9996\u6b21\u542f\u52a8\u8bbe\u7f6e\u3002",
     );
     try {
       await commands.installDomesticEnvironment();
       await bootstrapQuery.refetch();
-      setOperationMessage(
-        "\u56fd\u5185\u73af\u5883\u5df2\u51c6\u5907\u5b8c\u6210\u3002",
-      );
+      setOperationMessage("Claude Code \u5df2\u51c6\u5907\u5b8c\u6210\u3002");
       setLiveMessage(
         "Claude Code \u5df2\u66f4\u65b0\u5e76\u5b8c\u6210\u9996\u6b21\u914d\u7f6e\uff1b\u73b0\u5728\u53ef\u5728 CC Panel \u6a21\u578b\u680f\u914d\u7f6e\u6a21\u578b\u3002",
       );
@@ -391,16 +382,16 @@ export default function App() {
       await bootstrapQuery.refetch().catch(() => undefined);
       setInstallProgress((current) => ({
         step: current?.step ?? 1,
-        totalSteps: current?.totalSteps ?? 5,
+        totalSteps: current?.totalSteps ?? 4,
         phase: current?.phase ?? "node",
         status: "failed",
         message:
           error instanceof Error && error.message
             ? error.message
-            : "\u56fd\u5185\u73af\u5883\u51c6\u5907\u5931\u8d25",
+            : "Claude Code \u51c6\u5907\u5931\u8d25",
       }));
       setLiveMessage(
-        "\u56fd\u5185\u73af\u5883\u6ca1\u6709\u5b8c\u6210\uff0c\u5df2\u4fdd\u7559\u5df2\u5b8c\u6210\u7684\u6b65\u9aa4\uff0c\u53ef\u4fee\u590d\u540e\u91cd\u8bd5\u3002",
+        "Claude Code \u6ca1\u6709\u5b8c\u6210\uff0c\u5df2\u4fdd\u7559\u5df2\u5b8c\u6210\u7684\u6b65\u9aa4\uff0c\u53ef\u4fee\u590d\u540e\u91cd\u8bd5\u3002",
       );
     } finally {
       setClaudeSetupBusy(false);
@@ -530,7 +521,7 @@ export default function App() {
         "Skill 状态已保存。现有会话请使用 /reload-plugins 或重启；已载入的上下文不会被移除。",
       );
       setLiveMessage(
-        "\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002",
+        "Skill \u8bbe\u7f6e\u6b63\u5728\u4fdd\u5b58\uff0c\u8bf7\u7a0d\u5019\u3002",
       );
     },
     onError: reportError,

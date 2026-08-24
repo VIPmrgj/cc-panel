@@ -13,10 +13,10 @@ import type { DomesticInstallProgress } from "../../api/dto";
 import { Button } from "../common/Button";
 
 const copy = {
-  eyebrow: "\u56fd\u5185\u5feb\u901f\u51c6\u5907",
+  eyebrow: "\u5f00\u59cb\u4f7f\u7528 Claude Code",
   installTitle: "\u4e00\u952e\u51c6\u5907 Claude Code",
   installDescription:
-    "\u4e0d\u7528\u590d\u5236\u547d\u4ee4\u3002CC Panel \u4f1a\u81ea\u52a8\u51c6\u5907 Node.js\u3001Git\u3001npm \u56fd\u5185\u955c\u50cf\u548c Claude Code\u3002",
+    "\u4e0d\u7528\u590d\u5236\u547d\u4ee4\u3002CC Panel \u4f1a\u81ea\u52a8\u51c6\u5907 Node.js \u548c Claude Code\uff0c\u4e0d\u8981\u6c42\u4f60\u767b\u5f55 Claude \u5b98\u65b9\u8d26\u53f7\u3002",
   configureTitle:
     "\u73af\u5883\u5df2\u51c6\u5907\uff0c\u8fd8\u9700\u8981\u914d\u7f6e\u6a21\u578b",
   configureDescription:
@@ -40,7 +40,7 @@ const copy = {
   needConfig: "\u9700\u8981\u914d\u7f6e",
   needProject: "\u8fd8\u672a\u9009\u9879\u76ee",
   needModel: "\u8fd8\u672a\u9009\u6a21\u578b",
-  installButton: "\u4e00\u952e\u51c6\u5907\u56fd\u5185\u73af\u5883",
+  installButton: "\u4e00\u952e\u51c6\u5907 Claude Code",
   configButton: "\u6253\u5f00\u6a21\u578b\u914d\u7f6e",
   setupButton: "\u53bb\u5b8c\u6210\u8bbe\u7f6e",
   recheck: "\u91cd\u65b0\u68c0\u6d4b",
@@ -49,8 +49,7 @@ const copy = {
 
 const installSteps = [
   { phase: "node", label: "Node.js" },
-  { phase: "git", label: "Git" },
-  { phase: "npm", label: "npm \u56fd\u5185\u955c\u50cf" },
+  { phase: "npm", label: "npm" },
   { phase: "claude", label: "Claude Code" },
   { phase: "onboarding", label: "\u9996\u6b21\u542f\u52a8\u914d\u7f6e" },
 ] as const;
@@ -90,13 +89,7 @@ export function SetupCenter({
   onRecheck,
   onOpenSetup,
 }: Props) {
-  const environmentReady =
-    claudeInstalled &&
-    gitAvailable &&
-    powershellAvailable &&
-    nodeReady &&
-    npmReady &&
-    npmMirrorConfigured;
+  const environmentReady = claudeInstalled && nodeReady && npmReady;
   const state = !environmentReady
     ? "install"
     : !claudeAuthenticated
@@ -158,9 +151,13 @@ export function SetupCenter({
           icon={Download}
         />
         <SetupCheck
-          label="npm \u56fd\u5185\u955c\u50cf"
+          label="npm \u5b89\u88c5\u6e90\uff08\u53ef\u9009\uff09"
           ready={npmMirrorConfigured}
-          detail={npmMirrorConfigured ? copy.configured : copy.needConfig}
+          detail={
+            npmMirrorConfigured
+              ? copy.configured
+              : "\u672a\u8bbe\u7f6e，\u5b89\u88c5\u65f6\u4f1a\u81ea\u52a8\u5c1d\u8bd5\u56fd\u5185\u955c\u50cf"
+          }
           icon={Settings2}
         />
         <SetupCheck
@@ -263,7 +260,7 @@ export function InstallProgressView({
     (step) => step.phase === progress.phase,
   );
   const currentLabel = complete
-    ? "\u56fd\u5185\u73af\u5883\u5df2\u51c6\u5907\u5b8c\u6210"
+    ? "Claude Code \u5df2\u51c6\u5907\u5b8c\u6210"
     : failed
       ? (currentStep?.label ?? "\u5f53\u524d\u6b65\u9aa4") + "\u5931\u8d25"
       : (currentStep?.label ?? "\u51c6\u5907\u73af\u5883");

@@ -313,6 +313,7 @@ pub async fn start_claude_session(
     ensure_project_directory(&project)?;
 
     let (profile, secrets) = resolve_profile(&state, request.profile_id.as_deref())?;
+    super::bootstrap::mark_claude_onboarding_complete()?;
     let mode = build_session_mode(&request)?;
     let parent_session_id = match &mode {
         SessionMode::Fork { session_id } => Some(session_id.clone()),

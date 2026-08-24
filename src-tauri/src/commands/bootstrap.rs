@@ -45,7 +45,7 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> ApiResult<BootstrapRes
 }
 
 const DOMESTIC_INSTALL_PROGRESS_EVENT: &str = "cc-panel://domestic-install-progress";
-const DOMESTIC_INSTALL_TOTAL_STEPS: u8 = 5;
+const DOMESTIC_INSTALL_TOTAL_STEPS: u8 = 4;
 
 fn emit_domestic_install_progress(
     app: &tauri::AppHandle,
@@ -165,9 +165,8 @@ fn powershell_start_error(errors: &[String]) -> io::Error {
 fn domestic_step_info(step: u8) -> (&'static str, &'static str) {
     match step {
         1 => ("node", "正在检查或安装 Node.js"),
-        2 => ("git", "正在检查或安装 Git"),
-        3 => ("npm", "正在配置 npm 国内镜像"),
-        4 => ("claude", "正在安装或更新 Claude Code"),
+        2 => ("npm", "正在检查 npm 并准备安装源"),
+        3 => ("claude", "正在安装或更新 Claude Code"),
         _ => ("node", "正在准备 Windows 环境"),
     }
 }
@@ -223,7 +222,7 @@ fn run_powershell_streaming(
         let Ok(step) = raw_step.trim().parse::<u8>() else {
             continue;
         };
-        if !(1..=4).contains(&step) || current_step == Some(step) {
+        if !(1..=3).contains(&step) || current_step == Some(step) {
             continue;
         }
         if let Some(previous) = current_step {
@@ -344,7 +343,7 @@ fn npm_mirror_configured() -> bool {
             .trim_end_matches('/')
             .eq_ignore_ascii_case("https://registry.npmmirror.com")
 }
-fn mark_claude_onboarding_complete() -> ApiResult<()> {
+pub(super) fn mark_claude_onboarding_complete() -> ApiResult<()> {
     let home = dirs::home_dir().ok_or_else(|| {
         ApiError::new(
             "HOME_DIRECTORY_UNAVAILABLE",
@@ -416,19 +415,38 @@ function Refresh-CCPath {
   $env:Path=(($extra,$userPath,$machinePath)|Where-Object {$_}|Select-Object -Unique)-join ';'
 }
 function Has-Tool([string]$name){$null -ne (Get-Command $name -ErrorAction SilentlyContinue)}
-function Require-Winget { if(-not(Has-Tool 'winget')){Write-Output 'CCP_ERROR=Windows 包管理器 winget 不可用，请先安装 App Installer';exit 31} }
+function Install-NodeFromMirror {
+  $index=Invoke-RestMethod -UseBasicParsing -Uri 'https://npmmirror.com/mirrors/node/index.json'
+  $candidate=@($index|Where-Object { $_.files -contains 'win-x64-msi' -and -not [string]::IsNullOrWhiteSpace([string]$_.lts) }|Select-Object -First 1)
+  if($candidate.Count -eq 0){throw '国内镜像中没有找到可用的 Node.js 安装包'}
+  $version=[string]$candidate[0].version
+  $fileName='node-'+$version+'-x64.msi'
+  $installer=Join-Path ([IO.Path]::GetTempPath()) ('cc-panel-'+$fileName)
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri ('https://npmmirror.com/mirrors/node/'+$version+'/'+$fileName) -OutFile $installer
+    $process=Start-Process -FilePath 'msiexec.exe' -Verb RunAs -ArgumentList @('/i',$installer,'/qn','/norestart') -Wait -PassThru
+    if($process.ExitCode -notin @(0,3010)){throw ('Node.js 安装程序返回代码：'+$process.ExitCode)}
+  } finally {
+    if(Test-Path -LiteralPath $installer){Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue}
+  }
+}
+function Install-Node {
+  if(Has-Tool 'winget'){
+    $null=winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements
+    if($LASTEXITCODE -eq 0){return}
+  }
+  try { Install-NodeFromMirror } catch { throw ('winget 不可用或安装失败，国内镜像安装也失败：'+$_.Exception.Message) }
+}
 Write-Output 'CCP_STEP=node'
 Refresh-CCPath
-if(-not(Has-Tool 'node')){Require-Winget; $null = winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Node.js 安装失败，winget 返回代码："+$LASTEXITCODE);exit 32};Refresh-CCPath}
-Write-Output 'CCP_STEP=git'
-if(-not(Has-Tool 'git')){Require-Winget; $null = winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Git 安装失败，winget 返回代码："+$LASTEXITCODE);exit 33};Refresh-CCPath}
+if(-not(Has-Tool 'node')){try{Install-Node}catch{Write-Output ('CCP_ERROR=Node.js 安装失败：'+$_.Exception.Message);exit 32};Refresh-CCPath}
+if(-not(Has-Tool 'node')){Write-Output 'CCP_ERROR=Node.js 安装后仍未找到可执行文件';exit 33}
 Write-Output 'CCP_STEP=npm'
 if(-not(Has-Tool 'npm')){Write-Output 'CCP_ERROR=Node.js 安装后没有找到 npm';exit 41}
-$null = npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=npm 镜像配置失败，返回代码："+$LASTEXITCODE);exit 42}
-$registry=(npm.cmd config get registry).Trim().TrimEnd('/')
-if($registry -ine 'https://registry.npmmirror.com'){Write-Output 'CCP_ERROR=npm 国内镜像验证失败';exit 43}
+$null = npm.cmd config set registry 'https://registry.npmmirror.com/' --global
 Write-Output 'CCP_STEP=claude'
-$null = npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}
+$null = npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/'
+if($LASTEXITCODE -ne 0){$null = npm.cmd install --global '@anthropic-ai/claude-code@latest';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}}
 Refresh-CCPath
 if(-not(Has-Tool 'claude')){Write-Output 'CCP_ERROR=安装后没有找到 Claude Code';exit 45}
 $null = claude --version;if($LASTEXITCODE -ne 0){Write-Output 'CCP_ERROR=Claude Code 安装后无法运行';exit 46}"#;
@@ -448,7 +466,7 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
     {
         let (output, current_step) = run_powershell_streaming(DOMESTIC_INSTALL_SCRIPT, &app)
             .map_err(|error| {
-                let message = format!("国内环境安装脚本无法启动：{error}");
+                let message = format!("Claude Code 准备脚本无法启动：{error}");
                 emit_domestic_install_progress(&app, 1, "node", "failed", Some(&message));
                 ApiError::new("DOMESTIC_INSTALL_FAILED", message, true)
             })?;
@@ -474,7 +492,7 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
         }
         emit_domestic_install_progress(
             &app,
-            5,
+            4,
             "onboarding",
             "running",
             Some("Updating Claude Code first-run settings"),
@@ -482,7 +500,7 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
         if let Err(error) = mark_claude_onboarding_complete() {
             emit_domestic_install_progress(
                 &app,
-                5,
+                4,
                 "onboarding",
                 "failed",
                 Some("Claude Code first-run settings could not be updated"),
@@ -491,17 +509,17 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
         }
         emit_domestic_install_progress(
             &app,
-            5,
+            4,
             "onboarding",
             "completed",
             Some("Claude Code first-run settings are ready"),
         );
         emit_domestic_install_progress(
             &app,
-            5,
+            4,
             "complete",
             "completed",
-            Some("Domestic environment preparation completed"),
+            Some("Claude Code preparation completed"),
         );
         Ok(())
     }
@@ -557,12 +575,15 @@ mod tests {
     }
     #[cfg(windows)]
     #[test]
-    fn domestic_script_does_not_require_cc_switch() {
+    fn domestic_script_does_not_require_cc_switch_or_winget() {
         assert!(!DOMESTIC_INSTALL_SCRIPT.contains("CC-Switch"));
-        assert!(DOMESTIC_INSTALL_SCRIPT.contains("--source winget"));
+        assert!(!DOMESTIC_INSTALL_SCRIPT.contains("Require-Winget"));
+        assert!(!DOMESTIC_INSTALL_SCRIPT.contains("Git.Git"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("winget.exe install"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("--disable-interactivity"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("$OutputEncoding"));
-        assert!(DOMESTIC_INSTALL_SCRIPT.contains("$null = winget.exe"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("Install-NodeFromMirror"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("https://npmmirror.com/mirrors/node/index.json"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("$null = npm.cmd install"));
     }
 }

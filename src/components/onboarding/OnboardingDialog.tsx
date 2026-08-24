@@ -172,15 +172,13 @@ export function OnboardingDialog({
           <div className="onboarding-list" data-active-step={step}>
             <OnboardingRow
               icon={<KeyRound size={15} aria-hidden="true" />}
-              title={
-                "1. \u68c0\u67e5 Claude Code \u4e0e\u56fd\u5185\u73af\u5883"
-              }
+              title={"1. \u51c6\u5907 Claude Code"}
               detail={
                 !domesticEnvironmentReady
-                  ? "\u70b9\u51fb\u4e00\u952e\u51c6\u5907\uff0c\u81ea\u52a8\u5b89\u88c5 Node.js\u3001Git\u3001Claude Code\u3002"
+                  ? "\u70b9\u51fb\u6309\u94ae\uff0cCC Panel \u4f1a\u81ea\u52a8\u51c6\u5907 Node.js \u548c Claude Code\u3002\u4e0d\u8981\u6c42\u4f60\u767b\u5f55 Claude \u5b98\u65b9\u8d26\u53f7\u3002"
                   : claudeAuthenticated
-                    ? "\u73af\u5883\u5df2\u51c6\u5907\uff0c\u53ef\u5728 CC Panel \u7684\u6a21\u578b\u680f\u5b8c\u6210\u6a21\u578b\u914d\u7f6e\u3002"
-                    : "Claude Code \u73af\u5883\u5df2\u5b8c\u6210\uff0c\u8bf7\u5728 CC Panel \u7684\u6a21\u578b\u680f\u914d\u7f6e\u4e00\u4e2a\u7b2c\u4e09\u65b9\u6a21\u578b\u3002"
+                    ? "Claude Code \u5df2\u51c6\u5907\u597d\u3002\u6a21\u578b\u53ef\u4ee5\u7a0d\u540e\u518d\u914d\u7f6e\u3002"
+                    : "Claude Code \u5df2\u51c6\u5907\u597d\u3002\u6a21\u578b\u53ef\u4ee5\u7a0d\u540e\u5728 CC Panel \u4e2d\u914d\u7f6e\u3002"
               }
               ready={domesticEnvironmentReady}
               actions={
@@ -192,7 +190,7 @@ export function OnboardingDialog({
                       icon={<KeyRound size={14} />}
                       onClick={onInstallClaude}
                     >
-                      {"\u4e00\u952e\u51c6\u5907\u56fd\u5185\u73af\u5883"}
+                      {"\u4e00\u952e\u51c6\u5907 Claude Code"}
                     </Button>
                   )}
                   {domesticEnvironmentReady && !claudeAuthenticated && (

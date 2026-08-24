@@ -27,10 +27,12 @@ describe("SetupCenter", () => {
     const { props } = renderSetup();
 
     expect(
-      screen.getByRole("button", { name: "一键准备国内环境" }),
+      screen.getByRole("button", { name: "一键准备 Claude Code" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/输入内容会保留/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "一键准备国内环境" }));
+    await user.click(
+      screen.getByRole("button", { name: "一键准备 Claude Code" }),
+    );
     expect(props.onInstall).toHaveBeenCalledTimes(1);
   });
 
@@ -41,7 +43,7 @@ describe("SetupCenter", () => {
       screen.getByRole("button", { name: "打开模型配置" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "一键准备国内环境" }),
+      screen.queryByRole("button", { name: "一键准备 Claude Code" }),
     ).toBeNull();
   });
 
@@ -50,8 +52,8 @@ describe("SetupCenter", () => {
       <InstallProgressView
         progress={{
           step: 2,
-          totalSteps: 5,
-          phase: "git",
+          totalSteps: 4,
+          phase: "npm",
           status: "running",
           message: null,
         }}
@@ -61,9 +63,9 @@ describe("SetupCenter", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("aria-busy", "true");
     expect(
-      within(status).getByText("Git", { selector: "strong" }),
+      within(status).getByText("npm", { selector: "strong" }),
     ).toBeInTheDocument();
-    expect(within(status).getByText(/正在处理\s*Git/)).toBeInTheDocument();
+    expect(within(status).getByText(/正在处理\s*npm/)).toBeInTheDocument();
   });
   it("does not render when the real agent is ready", () => {
     const { container } = renderSetup({
