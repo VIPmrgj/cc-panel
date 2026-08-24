@@ -64,25 +64,27 @@ fn emit_domestic_install_progress(
 }
 
 fn command_output_detail(output: &Output) -> Option<String> {
-    let bytes = if output.stderr.is_empty() {
-        &output.stdout
-    } else {
-        &output.stderr
-    };
-    let line = String::from_utf8_lossy(bytes)
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .map(str::trim)
-        .unwrap_or_default()
-        .to_owned();
-    if line.is_empty() {
-        None
-    } else {
-        Some(line.chars().take(320).collect())
+    for bytes in [&output.stderr, &output.stdout] {
+        let text = String::from_utf8_lossy(bytes);
+        for line in text.lines().rev() {
+            let line = line.trim();
+            if line.is_empty() || is_powershell_progress(line) {
+                continue;
+            }
+            return Some(line.chars().take(320).collect());
+        }
     }
+    None
 }
 
+fn is_powershell_progress(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("<objs version=")
+        || lower.contains("<obj s=\"progress\"")
+        || lower.contains("system.management.automation.pscustomobject")
+        || lower.contains("<pr n=\"record\">")
+        || lower.contains("fullyqualifiederrorid")
+}
 fn domestic_step_info(step: u8) -> (&'static str, &'static str) {
     match step {
         1 => ("node", "正在检查或安装 Node.js"),
@@ -129,9 +131,13 @@ fn run_powershell_streaming(
         })
     });
     let mut current_step = None;
+    let mut stdout_lines = Vec::new();
     for line in BufReader::new(stdout).lines() {
         let line = line?;
         let Some(raw_step) = line.strip_prefix("CCP_STEP=") else {
+            if !line.trim().is_empty() && stdout_lines.len() < 64 {
+                stdout_lines.push(line);
+            }
             continue;
         };
         let Ok(step) = raw_step.trim().parse::<u8>() else {
@@ -148,7 +154,6 @@ fn run_powershell_streaming(
         emit_domestic_install_progress(app, step, phase, "running", Some(message));
         current_step = Some(step);
     }
-
     let status = child.wait()?;
     let stderr = match stderr_handle {
         Some(handle) => match handle.join() {
@@ -160,7 +165,7 @@ fn run_powershell_streaming(
     Ok((
         Output {
             status,
-            stdout: Vec::new(),
+            stdout: stdout_lines.join("\n").into_bytes(),
             stderr,
         },
         current_step,
@@ -330,7 +335,7 @@ fn run_powershell(script: &str) -> Result<Output, std::io::Error> {
     command.output()
 }
 #[cfg(windows)]
-const DOMESTIC_INSTALL_SCRIPT: &str = r#"$ErrorActionPreference='Stop'
+const DOMESTIC_INSTALL_SCRIPT: &str = r#"$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 function Refresh-CCPath {
   $userPath=[Environment]::GetEnvironmentVariable('Path','User'); $machinePath=[Environment]::GetEnvironmentVariable('Path','Machine')
   $extra=@($env:ProgramFiles+'\nodejs',$env:APPDATA+'\npm',$env:ProgramFiles+'\Git\cmd',$env:LOCALAPPDATA+'\Programs\Git\cmd')
@@ -339,9 +344,9 @@ function Refresh-CCPath {
 function Has-Tool([string]$name){$null -ne (Get-Command $name -ErrorAction SilentlyContinue)}
 Write-Output 'CCP_STEP=node'
 Refresh-CCPath
-if(-not(Has-Tool 'node')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id OpenJS.NodeJS.LTS --exact --silent --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Node.js installation failed'};Refresh-CCPath}
+if(-not(Has-Tool 'node')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Node.js installation failed'};Refresh-CCPath}
 Write-Output 'CCP_STEP=git'
-if(-not(Has-Tool 'git')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id Git.Git --exact --silent --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Git installation failed'};Refresh-CCPath}
+if(-not(Has-Tool 'git')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Git installation failed'};Refresh-CCPath}
 Write-Output 'CCP_STEP=npm'
 if(-not(Has-Tool 'npm')){throw 'npm was not found after Node.js installation'}
 npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){throw 'npm mirror configuration failed'}
@@ -384,9 +389,16 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
         if !output.status.success() {
             let step = current_step.unwrap_or(1);
             let (phase, failed_message) = domestic_step_info(step);
+            let exit_code = output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "unknown".to_owned());
             let message = command_output_detail(&output)
-                .map(|detail| format!("{failed_message} ({detail})"))
-                .unwrap_or_else(|| format!("{failed_message}."));
+                .map(|detail| format!("{failed_message}（{detail}）"))
+                .unwrap_or_else(|| {
+                    format!("{failed_message}，Windows 安装程序返回代码：{exit_code}。")
+                });
             emit_domestic_install_progress(&app, step, phase, "failed", Some(&message));
             return Err(ApiError::new("DOMESTIC_INSTALL_FAILED", message, true));
         }
@@ -435,5 +447,26 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
             "The domestic installation is supported on Windows only.",
             false,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn powershell_progress_xml_is_filtered() {
+        assert!(is_powershell_progress(
+            r#"<Objs Version="1.1.0.1"><Obj S="progress"><T>Completed</T></Obj></Objs>"#
+        ));
+        assert!(!is_powershell_progress("Node.js installation failed"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn domestic_script_does_not_require_cc_switch() {
+        assert!(!DOMESTIC_INSTALL_SCRIPT.contains("CC-Switch"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("--source winget"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("--disable-interactivity"));
     }
 }
