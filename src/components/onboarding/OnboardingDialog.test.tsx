@@ -88,7 +88,7 @@ describe("OnboardingDialog", () => {
     render(<OnboardingDialog {...props} />);
     await userEvent.click(screen.getByRole("button", { name: "下一步" }));
     await userEvent.click(
-      screen.getByRole("button", { name: "一键安装 Claude Code" }),
+      screen.getByRole("button", { name: "一键准备国内环境" }),
     );
     expect(props.onInstallClaude).toHaveBeenCalledTimes(1);
     expect(

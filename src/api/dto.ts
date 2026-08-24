@@ -126,7 +126,12 @@ export interface BootstrapResponse {
   attachments: AttachmentRecord[];
   claudeCodeVersion: string | null;
   claudeCodeAuthenticated: boolean;
+  claudeCodeConfigured: boolean;
+  nodeVersion: string | null;
+  npmVersion: string | null;
+  npmMirrorConfigured: boolean;
   gitAvailable: boolean;
+  ccSwitchInstalled: boolean;
 }
 
 export interface EnhancePromptResponse {

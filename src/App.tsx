@@ -247,7 +247,8 @@ export default function App() {
   const modelOk = profiles.some(
     (profile) => profile.selected && profile.hasApiKey,
   );
-  const missingPrerequisites = !claudeOk || !projectOk || !modelOk;
+  const claudeReady = claudeOk && (Boolean(bootstrap?.claudeCodeConfigured) || modelOk)
+  const missingPrerequisites = !claudeReady || !projectOk || !modelOk;
   const conversations = useMemo(
     () => conversationsQuery.data ?? [],
     [conversationsQuery.data],
@@ -331,13 +332,13 @@ export default function App() {
 
   const installClaudeCode = useCallback(async () => {
     setClaudeSetupBusy(true);
-    setOperationMessage("正在使用 Claude 官方安装流程安装 Claude Code…");
-    setLiveMessage("正在安装 Claude Code，请稍候。");
+    setOperationMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\u2026");
+    setLiveMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002");
     try {
-      await commands.installClaudeCode();
+      await commands.installDomesticEnvironment();
       await bootstrapQuery.refetch();
-      setOperationMessage("Claude Code 安装完成，请继续登录。");
-      setLiveMessage("Claude Code 已安装，下一步可以开始登录。");
+      setOperationMessage("\u56fd\u5185\u73af\u5883\u5df2\u51c6\u5907\u5b8c\u6210\u3002");
+      setLiveMessage("Node.js\u3001Git\u3001npm \u955c\u50cf\u3001Claude Code \u548c CC-Switch \u5df2\u5904\u7406\uff1b\u63a5\u4e0b\u6765\u8bf7\u914d\u7f6e\u4f60\u7684\u6a21\u578b\u6765\u6e90\u3002");
     } catch (error) {
       reportError(error);
     } finally {
@@ -348,9 +349,9 @@ export default function App() {
   const startClaudeLogin = useCallback(async () => {
     setClaudeSetupBusy(true);
     try {
-      await commands.startClaudeLogin();
-      setOperationMessage("登录窗口已打开，请在新窗口中完成 Claude 登录。");
-      setLiveMessage("登录完成后回到 CC Panel，点击重新检测。");
+      await commands.startCcSwitch();
+      setOperationMessage("\u5df2\u6253\u5f00 CC-Switch\uff0c\u8bf7\u5728\u5176\u4e2d\u5b8c\u6210\u6a21\u578b\u914d\u7f6e\u3002");
+      setLiveMessage("\u914d\u7f6e\u5b8c\u6210\u540e\u56de\u5230 CC Panel\uff0c\u70b9\u51fb\u91cd\u65b0\u68c0\u6d4b\u3002");
     } catch (error) {
       reportError(error);
     } finally {
@@ -476,7 +477,7 @@ export default function App() {
       setOperationMessage(
         "Skill 状态已保存。现有会话请使用 /reload-plugins 或重启；已载入的上下文不会被移除。",
       );
-      setLiveMessage("Skill 状态已保存。可能需要重新加载 Claude Code。 ");
+      setLiveMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002");
     },
     onError: reportError,
   });
@@ -2072,8 +2073,12 @@ export default function App() {
           {missingPrerequisites && !onboardingOpen && (
             <SetupCenter
               claudeInstalled={claudeOk}
-              claudeAuthenticated={bootstrap.claudeCodeAuthenticated}
+              claudeAuthenticated={bootstrap.claudeCodeConfigured || modelOk}
               gitAvailable={bootstrap.gitAvailable}
+              nodeReady={Boolean(bootstrap.nodeVersion)}
+              npmReady={Boolean(bootstrap.npmVersion)}
+              npmMirrorConfigured={bootstrap.npmMirrorConfigured}
+              ccSwitchInstalled={bootstrap.ccSwitchInstalled}
               projectReady={projectOk}
               modelReady={modelOk}
               busy={claudeSetupBusy}
@@ -2207,7 +2212,7 @@ export default function App() {
       <OnboardingDialog
         open={onboardingOpen}
         claudeCliAvailable={claudeOk}
-        claudeAuthenticated={bootstrap.claudeCodeAuthenticated}
+        claudeAuthenticated={bootstrap.claudeCodeConfigured || modelOk}
         gitAvailable={bootstrap.gitAvailable}
         projectLabel={bootstrap.preferences.selectedProjectRoot?.label ?? null}
         modelReady={modelOk}

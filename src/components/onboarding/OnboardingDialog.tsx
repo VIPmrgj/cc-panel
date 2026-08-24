@@ -71,6 +71,7 @@ export function OnboardingDialog({
   const [step, setStep] = useState(0);
   const [demoCompleted, setDemoCompleted] = useState(false);
   const totalSteps = 6;
+  const domesticEnvironmentReady = claudeCliAvailable && gitAvailable;
   const stepLabels = [
     "选择体验方式",
     "检查 Claude Code",
@@ -165,51 +166,33 @@ export function OnboardingDialog({
           <div className="onboarding-list" data-active-step={step}>
             <OnboardingRow
               icon={<KeyRound size={15} aria-hidden="true" />}
-              title="1. 检查 Claude Code"
+              title={"1. \u68c0\u67e5 Claude Code \u4e0e\u56fd\u5185\u73af\u5883"}
               detail={
-                claudeCliAvailable
-                  ? claudeAuthenticated
-                    ? gitAvailable
-                      ? "已安装并登录，可以在本机启动会话。"
-                      : "已安装并登录；建议补充安装 Git for Windows。"
-                    : "已安装，但还未登录 Claude 账户。"
-                  : "CC Panel 需要调用本机的官方 Claude Code 命令行。"
+                !domesticEnvironmentReady
+                  ? "\u70b9\u51fb\u4e00\u952e\u51c6\u5907\uff0c\u81ea\u52a8\u5b89\u88c5 Node.js\u3001Git\u3001Claude Code \u548c CC-Switch\u3002"
+                  : claudeAuthenticated
+                    ? "\u73af\u5883\u5df2\u51c6\u5907\uff0c\u53ef\u4f7f\u7528 CC-Switch \u6216 CC Panel \u6a21\u578b\u914d\u7f6e\u3002"
+                    : "Claude Code \u5df2\u5b89\u88c5\uff0c\u8fd8\u9700\u8981\u5728 CC-Switch \u4e2d\u914d\u7f6e\u4e00\u4e2a\u7b2c\u4e09\u65b9\u6a21\u578b\u3002"
               }
-              ready={claudeCliAvailable}
+              ready={domesticEnvironmentReady}
               actions={
                 <>
-                  {!claudeCliAvailable && (
-                    <Button
-                      variant="primary"
-                      busy={busy}
-                      icon={<KeyRound size={14} />}
-                      onClick={onInstallClaude}
-                    >
-                      一键安装 Claude Code
+                  {!domesticEnvironmentReady && (
+                    <Button variant="primary" busy={busy} icon={<KeyRound size={14} />} onClick={onInstallClaude}>
+                      {"\u4e00\u952e\u51c6\u5907\u56fd\u5185\u73af\u5883"}
                     </Button>
                   )}
-                  {claudeCliAvailable && !claudeAuthenticated && (
-                    <Button
-                      variant="primary"
-                      busy={busy}
-                      icon={<KeyRound size={14} />}
-                      onClick={onStartClaudeLogin}
-                    >
-                      开始登录
+                  {domesticEnvironmentReady && !claudeAuthenticated && (
+                    <Button variant="primary" busy={busy} icon={<KeyRound size={14} />} onClick={onStartClaudeLogin}>
+                      {"\u6253\u5f00 CC-Switch \u914d\u7f6e"}
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    busy={busy}
-                    icon={<RotateCw size={14} />}
-                    onClick={onRecheckClaude}
-                  >
-                    重新检测
+                  <Button variant="ghost" busy={busy} icon={<RotateCw size={14} />} onClick={onRecheckClaude}>
+                    {"\u91cd\u65b0\u68c0\u6d4b"}
                   </Button>
                 </>
               }
-            />
-            <OnboardingRow
+            />            <OnboardingRow
               icon={<FolderOpen size={15} aria-hidden="true" />}
               title="2. 选择工作文件夹"
               detail={

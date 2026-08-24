@@ -27,23 +27,23 @@ describe("SetupCenter", () => {
     const { props } = renderSetup();
 
     expect(
-      screen.getByRole("button", { name: "一键安装 Claude Code" }),
+      screen.getByRole("button", { name: "一键准备国内环境" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/当前输入内容会保留/)).toBeInTheDocument();
+    expect(screen.getByText(/输入内容会保留/)).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "一键安装 Claude Code" }),
+      screen.getByRole("button", { name: "一键准备国内环境" }),
     );
     expect(props.onInstall).toHaveBeenCalledTimes(1);
   });
 
   it("moves from installation to login without reopening onboarding", () => {
-    renderSetup({ claudeInstalled: true });
+    renderSetup({ claudeInstalled: true, gitAvailable: true });
 
     expect(
-      screen.getByRole("button", { name: "开始登录" }),
+      screen.getByRole("button", { name: "打开 CC-Switch 配置" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "一键安装 Claude Code" }),
+      screen.queryByRole("button", { name: "一键准备国内环境" }),
     ).toBeNull();
   });
 

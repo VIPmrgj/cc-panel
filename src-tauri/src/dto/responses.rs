@@ -146,7 +146,12 @@ pub struct BootstrapResponse {
     pub attachments: Vec<AttachmentRecord>,
     pub claude_code_version: Option<String>,
     pub claude_code_authenticated: bool,
+    pub claude_code_configured: bool,
+    pub node_version: Option<String>,
+    pub npm_version: Option<String>,
+    pub npm_mirror_configured: bool,
     pub git_available: bool,
+    pub cc_switch_installed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
