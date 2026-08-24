@@ -30,6 +30,7 @@ const copy = {
   projectBadge: "\u5f85\u914d\u7f6e",
   claude: "Claude Code",
   git: "Git for Windows",
+  powershell: "Windows \u811a\u672c\u73af\u5883",
   model: "\u6a21\u578b\u6765\u6e90",
   project: "\u9879\u76ee\u4e0e\u9ed8\u8ba4\u6a21\u578b",
   installed: "\u5df2\u5b89\u88c5",
@@ -58,6 +59,7 @@ interface Props {
   claudeInstalled: boolean;
   claudeAuthenticated: boolean;
   gitAvailable: boolean;
+  powershellAvailable?: boolean;
   nodeReady?: boolean;
   npmReady?: boolean;
   npmMirrorConfigured?: boolean;
@@ -75,6 +77,7 @@ export function SetupCenter({
   claudeInstalled,
   claudeAuthenticated,
   gitAvailable,
+  powershellAvailable = true,
   nodeReady = true,
   npmReady = true,
   npmMirrorConfigured = true,
@@ -90,6 +93,7 @@ export function SetupCenter({
   const environmentReady =
     claudeInstalled &&
     gitAvailable &&
+    powershellAvailable &&
     nodeReady &&
     npmReady &&
     npmMirrorConfigured;
@@ -170,6 +174,12 @@ export function SetupCenter({
           ready={gitAvailable}
           detail={gitAvailable ? copy.detected : copy.needInstall}
           icon={GitBranch}
+        />
+        <SetupCheck
+          label={copy.powershell}
+          ready={powershellAvailable}
+          detail={powershellAvailable ? copy.detected : copy.needInstall}
+          icon={Settings2}
         />
         <SetupCheck
           label={copy.model}

@@ -276,6 +276,7 @@ export default function App() {
     bootstrap?.nodeVersion &&
     bootstrap?.npmVersion &&
     bootstrap?.npmMirrorConfigured &&
+    bootstrap?.powershellAvailable &&
     bootstrap?.gitAvailable,
   );
   const claudeReady =
@@ -2128,6 +2129,7 @@ export default function App() {
               claudeInstalled={claudeOk}
               claudeAuthenticated={bootstrap.claudeCodeConfigured || modelOk}
               gitAvailable={bootstrap.gitAvailable}
+              powershellAvailable={bootstrap.powershellAvailable}
 
               nodeReady={Boolean(bootstrap.nodeVersion)}
               npmReady={Boolean(bootstrap.npmVersion)}

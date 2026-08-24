@@ -131,6 +131,7 @@ export interface BootstrapResponse {
   npmVersion: string | null;
   npmMirrorConfigured: boolean;
   gitAvailable: boolean;
+  powershellAvailable: boolean;
 }
 
 export type DomesticInstallPhase =

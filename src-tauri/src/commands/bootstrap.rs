@@ -1,7 +1,9 @@
+#[cfg(windows)]
+use std::env;
 use std::{
     fs,
-    io::{BufRead, BufReader, Read},
-    path::Path,
+    io::{self, BufRead, BufReader, Read},
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
 
@@ -38,6 +40,7 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> ApiResult<BootstrapRes
         npm_version: detect_tool_version("npm"),
         npm_mirror_configured: npm_mirror_configured(),
         git_available: git_available(),
+        powershell_available: powershell_available(),
     })
 }
 
@@ -86,6 +89,79 @@ fn is_powershell_progress(text: &str) -> bool {
         || lower.contains("<pr n=\"record\">")
         || lower.contains("fullyqualifiederrorid")
 }
+
+fn powershell_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    #[cfg(windows)]
+    {
+        for variable in ["SystemRoot", "WINDIR"] {
+            if let Some(root) = env::var_os(variable) {
+                let root = PathBuf::from(root);
+                candidates.push(
+                    root.join("System32")
+                        .join("WindowsPowerShell")
+                        .join("v1.0")
+                        .join("powershell.exe"),
+                );
+                candidates.push(
+                    root.join("Sysnative")
+                        .join("WindowsPowerShell")
+                        .join("v1.0")
+                        .join("powershell.exe"),
+                );
+            }
+        }
+
+        if let Some(program_files) = env::var_os("ProgramFiles") {
+            candidates.push(
+                PathBuf::from(program_files)
+                    .join("PowerShell")
+                    .join("7")
+                    .join("pwsh.exe"),
+            );
+        }
+    }
+
+    candidates.extend([PathBuf::from("powershell.exe"), PathBuf::from("pwsh.exe")]);
+    candidates.dedup();
+    candidates
+}
+
+fn encode_powershell_script(script: &str) -> String {
+    let mut bytes = Vec::with_capacity(script.len() * 2);
+    for unit in script.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    BASE64.encode(bytes)
+}
+
+fn powershell_command(executable: &Path, encoded: &str) -> Command {
+    let mut command = Command::new(executable);
+    command
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-EncodedCommand",
+            encoded,
+        ])
+        .stdin(Stdio::null());
+    configure_hidden(&mut command);
+    command
+}
+
+fn powershell_start_error(errors: &[String]) -> io::Error {
+    let detail = if errors.is_empty() {
+        "没有找到可启动的 PowerShell 程序".to_owned()
+    } else {
+        errors.join("；")
+    };
+    io::Error::other(format!("PowerShell 启动失败：{detail}"))
+}
+
 fn domestic_step_info(step: u8) -> (&'static str, &'static str) {
     match step {
         1 => ("node", "正在检查或安装 Node.js"),
@@ -100,31 +176,25 @@ fn run_powershell_streaming(
     script: &str,
     app: &tauri::AppHandle,
 ) -> Result<(Output, Option<u8>), std::io::Error> {
-    let mut bytes = Vec::with_capacity(script.len() * 2);
-    for unit in script.encode_utf16() {
-        bytes.extend_from_slice(&unit.to_le_bytes());
+    let encoded = encode_powershell_script(script);
+    let mut child = None;
+    let mut errors = Vec::new();
+    for executable in powershell_candidates() {
+        let mut command = powershell_command(&executable, &encoded);
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        match command.spawn() {
+            Ok(process) => {
+                child = Some(process);
+                break;
+            }
+            Err(error) => errors.push(format!("{}：{}", executable.display(), error)),
+        }
     }
-    let encoded = BASE64.encode(bytes);
-    let mut command = Command::new("powershell.exe");
-    command
-        .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-EncodedCommand",
-            &encoded,
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    configure_hidden(&mut command);
-    let mut child = command.spawn()?;
+    let mut child = child.ok_or_else(|| powershell_start_error(&errors))?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| std::io::Error::other("missing PowerShell stdout"))?;
+        .ok_or_else(|| io::Error::other("PowerShell 标准输出管道创建失败"))?;
     let stderr_handle = child.stderr.take().map(|mut pipe| {
         std::thread::spawn(move || {
             let mut stderr = Vec::new();
@@ -318,25 +388,19 @@ fn mark_claude_onboarding_complete() -> ApiResult<()> {
     replace_file_atomically(&target, &bytes)
 }
 fn run_powershell(script: &str) -> Result<Output, std::io::Error> {
-    let mut bytes = Vec::with_capacity(script.len() * 2);
-    for unit in script.encode_utf16() {
-        bytes.extend_from_slice(&unit.to_le_bytes())
+    let encoded = encode_powershell_script(script);
+    let mut errors = Vec::new();
+    for executable in powershell_candidates() {
+        match powershell_command(&executable, &encoded).output() {
+            Ok(output) => return Ok(output),
+            Err(error) => errors.push(format!("{}：{}", executable.display(), error)),
+        }
     }
-    let encoded = BASE64.encode(bytes);
-    let mut command = Command::new("powershell.exe");
-    command
-        .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-EncodedCommand",
-            &encoded,
-        ])
-        .stdin(Stdio::null());
-    configure_hidden(&mut command);
-    command.output()
+    Err(powershell_start_error(&errors))
+}
+
+fn powershell_available() -> bool {
+    run_powershell("$null").is_ok_and(|output| output.status.success())
 }
 #[cfg(windows)]
 const DOMESTIC_INSTALL_SCRIPT: &str = r#"$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
@@ -377,19 +441,10 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
     #[cfg(windows)]
     {
         let (output, current_step) = run_powershell_streaming(DOMESTIC_INSTALL_SCRIPT, &app)
-            .map_err(|_| {
-                emit_domestic_install_progress(
-                    &app,
-                    1,
-                    "node",
-                    "failed",
-                    Some("The Windows installation script could not be started"),
-                );
-                ApiError::new(
-                    "DOMESTIC_INSTALL_FAILED",
-                    "The Windows installation script could not be started.",
-                    true,
-                )
+            .map_err(|error| {
+                let message = format!("国内环境安装脚本无法启动：{error}");
+                emit_domestic_install_progress(&app, 1, "node", "failed", Some(&message));
+                ApiError::new("DOMESTIC_INSTALL_FAILED", message, true)
             })?;
         if !output.status.success() {
             let step = current_step.unwrap_or(1);
@@ -466,6 +521,21 @@ mod tests {
         ));
         assert!(is_powershell_progress("#< CLIXML"));
         assert!(!is_powershell_progress("Node.js installation failed"));
+    }
+
+    #[test]
+    fn powershell_candidates_include_fallback_executables() {
+        let candidates = powershell_candidates();
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with("powershell.exe")));
+        assert!(candidates.iter().any(|path| path.ends_with("pwsh.exe")));
+    }
+
+    #[test]
+    fn powershell_start_error_preserves_attempt_details() {
+        let error = powershell_start_error(&["powershell.exe: access denied".to_owned()]);
+        assert!(error.to_string().contains("access denied"));
     }
 
     #[cfg(windows)]
