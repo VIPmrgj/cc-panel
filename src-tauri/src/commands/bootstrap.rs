@@ -79,7 +79,8 @@ fn command_output_detail(output: &Output) -> Option<String> {
 
 fn is_powershell_progress(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    lower.contains("<objs version=")
+    lower.contains("clixml")
+        || lower.contains("<objs version=")
         || lower.contains("<obj s=\"progress\"")
         || lower.contains("system.management.automation.pscustomobject")
         || lower.contains("<pr n=\"record\">")
@@ -135,7 +136,10 @@ fn run_powershell_streaming(
     for line in BufReader::new(stdout).lines() {
         let line = line?;
         let Some(raw_step) = line.strip_prefix("CCP_STEP=") else {
-            if !line.trim().is_empty() && stdout_lines.len() < 64 {
+            if line.starts_with("CCP_ERROR=") {
+                stdout_lines.clear();
+                stdout_lines.push(line);
+            } else if !line.trim().is_empty() && stdout_lines.len() < 64 {
                 stdout_lines.push(line);
             }
             continue;
@@ -342,20 +346,21 @@ function Refresh-CCPath {
   $env:Path=(($extra,$userPath,$machinePath)|Where-Object {$_}|Select-Object -Unique)-join ';'
 }
 function Has-Tool([string]$name){$null -ne (Get-Command $name -ErrorAction SilentlyContinue)}
+function Require-Winget { if(-not(Has-Tool 'winget')){Write-Output 'CCP_ERROR=Windows 包管理器 winget 不可用，请先安装 App Installer';exit 31} }
 Write-Output 'CCP_STEP=node'
 Refresh-CCPath
-if(-not(Has-Tool 'node')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Node.js installation failed'};Refresh-CCPath}
+if(-not(Has-Tool 'node')){Require-Winget; winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Node.js 安装失败，winget 返回代码："+$LASTEXITCODE);exit 32};Refresh-CCPath}
 Write-Output 'CCP_STEP=git'
-if(-not(Has-Tool 'git')){if(-not(Has-Tool 'winget')){throw 'winget is not available'}; winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){throw 'Git installation failed'};Refresh-CCPath}
+if(-not(Has-Tool 'git')){Require-Winget; winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Git 安装失败，winget 返回代码："+$LASTEXITCODE);exit 33};Refresh-CCPath}
 Write-Output 'CCP_STEP=npm'
-if(-not(Has-Tool 'npm')){throw 'npm was not found after Node.js installation'}
-npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){throw 'npm mirror configuration failed'}
+if(-not(Has-Tool 'npm')){Write-Output 'CCP_ERROR=Node.js 安装后没有找到 npm';exit 41}
+npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=npm 镜像配置失败，返回代码："+$LASTEXITCODE);exit 42}
 $registry=(npm.cmd config get registry).Trim().TrimEnd('/')
-if($registry -ine 'https://registry.npmmirror.com'){throw 'npm mirror verification failed'}
+if($registry -ine 'https://registry.npmmirror.com'){Write-Output 'CCP_ERROR=npm 国内镜像验证失败';exit 43}
 Write-Output 'CCP_STEP=claude'
-npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/';if($LASTEXITCODE -ne 0){throw 'Claude Code installation failed'}
+npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}
 Refresh-CCPath
-if(-not(Has-Tool 'claude')){throw 'Claude executable was not found after installation'}
+if(-not(Has-Tool 'claude')){Write-Output 'CCP_ERROR=安装后没有找到 Claude Code';exit 45}
 claude --version"#;
 #[cfg(not(windows))]
 const DOMESTIC_INSTALL_SCRIPT: &str = "";
@@ -459,6 +464,7 @@ mod tests {
         assert!(is_powershell_progress(
             r#"<Objs Version="1.1.0.1"><Obj S="progress"><T>Completed</T></Obj></Objs>"#
         ));
+        assert!(is_powershell_progress("#< CLIXML"));
         assert!(!is_powershell_progress("Node.js installation failed"));
     }
 
