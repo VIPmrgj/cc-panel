@@ -61,6 +61,28 @@ describe("AddModelDialog", () => {
     );
   });
 
+  it("selects the first saved model when the app has no current model", async () => {
+    const onSave = vi.fn();
+    render(
+      <AddModelDialog selectByDefault onClose={vi.fn()} onSave={onSave} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ selected: true }),
+      true,
+    );
+  });
+
+  it("does not switch away from an existing model when adding another", async () => {
+    const onSave = vi.fn();
+    render(<AddModelDialog onClose={vi.fn()} onSave={onSave} />);
+    await userEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ selected: false }),
+      true,
+    );
+  });
+
   it("prefills Zhipu GLM (智谱) endpoint and model", async () => {
     render(<AddModelDialog onClose={vi.fn()} onSave={vi.fn()} />);
     await userEvent.selectOptions(screen.getByLabelText(/提供商/), "Zhipu GLM");

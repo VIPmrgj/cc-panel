@@ -10,6 +10,7 @@ import {
 
 interface Props {
   profile?: ModelProfile | null;
+  selectByDefault?: boolean;
   busy?: boolean;
   onClose: () => void;
   onSave: (profile: ModelProfileInput, promptForApiKey: boolean) => void;
@@ -26,6 +27,7 @@ const focusableSelector =
 
 export function AddModelDialog({
   profile = null,
+  selectByDefault = false,
   busy = false,
   onClose,
   onSave,
@@ -125,7 +127,7 @@ export function AddModelDialog({
         websiteUrl: websiteUrl.trim() || null,
         baseUrl: normalizedBaseUrl.url,
         modelId: modelId.trim(),
-        selected: profile?.selected ?? false,
+        selected: profile?.selected ?? selectByDefault,
       },
       promptForApiKey,
     );

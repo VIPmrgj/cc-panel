@@ -13,7 +13,7 @@ interface Props {
 }
 
 const statusLabels: Record<Props["status"], string> = {
-  disconnected: "未连接",
+  disconnected: "等待开始",
   starting: "正在启动",
   thinking: "正在思考",
   "tool-running": "正在执行工具",

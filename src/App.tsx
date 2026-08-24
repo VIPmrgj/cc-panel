@@ -2299,6 +2299,7 @@ export default function App() {
       {modelDialog !== false && (
         <AddModelDialog
           profile={modelDialog}
+          selectByDefault={!selectedProfile}
           busy={modelDialogBusy}
           onClose={() => setModelDialog(false)}
           onSave={(profile, promptForApiKey) =>
