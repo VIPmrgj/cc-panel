@@ -203,8 +203,14 @@ fn run_powershell_streaming(
     });
     let mut current_step = None;
     let mut stdout_lines = Vec::new();
-    for line in BufReader::new(stdout).lines() {
-        let line = line?;
+    let mut reader = BufReader::new(stdout);
+    let mut raw_line = Vec::new();
+    loop {
+        raw_line.clear();
+        if reader.read_until(b'\n', &mut raw_line)? == 0 {
+            break;
+        }
+        let line = decode_powershell_line(&raw_line);
         let Some(raw_step) = line.strip_prefix("CCP_STEP=") else {
             if line.starts_with("CCP_ERROR=") {
                 stdout_lines.clear();
@@ -403,7 +409,7 @@ fn powershell_available() -> bool {
     run_powershell("$null").is_ok_and(|output| output.status.success())
 }
 #[cfg(windows)]
-const DOMESTIC_INSTALL_SCRIPT: &str = r#"$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+const DOMESTIC_INSTALL_SCRIPT: &str = r#"$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$OutputEncoding=[Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=$OutputEncoding
 function Refresh-CCPath {
   $userPath=[Environment]::GetEnvironmentVariable('Path','User'); $machinePath=[Environment]::GetEnvironmentVariable('Path','Machine')
   $extra=@($env:ProgramFiles+'\nodejs',$env:APPDATA+'\npm',$env:ProgramFiles+'\Git\cmd',$env:LOCALAPPDATA+'\Programs\Git\cmd')
@@ -413,19 +419,19 @@ function Has-Tool([string]$name){$null -ne (Get-Command $name -ErrorAction Silen
 function Require-Winget { if(-not(Has-Tool 'winget')){Write-Output 'CCP_ERROR=Windows 包管理器 winget 不可用，请先安装 App Installer';exit 31} }
 Write-Output 'CCP_STEP=node'
 Refresh-CCPath
-if(-not(Has-Tool 'node')){Require-Winget; winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Node.js 安装失败，winget 返回代码："+$LASTEXITCODE);exit 32};Refresh-CCPath}
+if(-not(Has-Tool 'node')){Require-Winget; $null = winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Node.js 安装失败，winget 返回代码："+$LASTEXITCODE);exit 32};Refresh-CCPath}
 Write-Output 'CCP_STEP=git'
-if(-not(Has-Tool 'git')){Require-Winget; winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Git 安装失败，winget 返回代码："+$LASTEXITCODE);exit 33};Refresh-CCPath}
+if(-not(Has-Tool 'git')){Require-Winget; $null = winget.exe install --id Git.Git --exact --source winget --silent --disable-interactivity --accept-source-agreements --accept-package-agreements;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Git 安装失败，winget 返回代码："+$LASTEXITCODE);exit 33};Refresh-CCPath}
 Write-Output 'CCP_STEP=npm'
 if(-not(Has-Tool 'npm')){Write-Output 'CCP_ERROR=Node.js 安装后没有找到 npm';exit 41}
-npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=npm 镜像配置失败，返回代码："+$LASTEXITCODE);exit 42}
+$null = npm.cmd config set registry 'https://registry.npmmirror.com/' --global;if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=npm 镜像配置失败，返回代码："+$LASTEXITCODE);exit 42}
 $registry=(npm.cmd config get registry).Trim().TrimEnd('/')
 if($registry -ine 'https://registry.npmmirror.com'){Write-Output 'CCP_ERROR=npm 国内镜像验证失败';exit 43}
 Write-Output 'CCP_STEP=claude'
-npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}
+$null = npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}
 Refresh-CCPath
 if(-not(Has-Tool 'claude')){Write-Output 'CCP_ERROR=安装后没有找到 Claude Code';exit 45}
-claude --version"#;
+$null = claude --version;if($LASTEXITCODE -ne 0){Write-Output 'CCP_ERROR=Claude Code 安装后无法运行';exit 46}"#;
 #[cfg(not(windows))]
 const DOMESTIC_INSTALL_SCRIPT: &str = "";
 
@@ -510,6 +516,11 @@ pub async fn install_domestic_environment(app: tauri::AppHandle) -> ApiResult<()
     }
 }
 
+fn decode_powershell_line(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_end_matches(&['\r', '\n'][..])
+        .to_owned()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,11 +549,20 @@ mod tests {
         assert!(error.to_string().contains("access denied"));
     }
 
+    #[test]
+    fn powershell_line_decoder_accepts_non_utf8() {
+        let line = decode_powershell_line(&[b'C', b'C', b'P', b'_', 0xff, b'\n']);
+        assert!(line.starts_with("CCP_"));
+        assert!(!line.contains('\n'));
+    }
     #[cfg(windows)]
     #[test]
     fn domestic_script_does_not_require_cc_switch() {
         assert!(!DOMESTIC_INSTALL_SCRIPT.contains("CC-Switch"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("--source winget"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("--disable-interactivity"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("$OutputEncoding"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("$null = winget.exe"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("$null = npm.cmd install"));
     }
 }
