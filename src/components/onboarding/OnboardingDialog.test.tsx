@@ -19,6 +19,8 @@ function makeProps(
   return {
     open: true,
     claudeCliAvailable: true,
+    claudeAuthenticated: true,
+    gitAvailable: true,
     projectLabel: "C:\\work",
     modelReady: true,
     experienceMode: "guided" as const,
@@ -27,7 +29,8 @@ function makeProps(
 
     ollamaSaving: false,
     onExperienceModeChange: vi.fn(),
-    onCopyInstallCommand: vi.fn(),
+    onInstallClaude: vi.fn(),
+    onStartClaudeLogin: vi.fn(),
     onRecheckClaude: vi.fn(),
     onSelectProject: vi.fn(),
     onAddModel: vi.fn(),
@@ -39,6 +42,7 @@ function makeProps(
       content: "<html></html>",
       createdAtMs: 1,
     }),
+    onOpenDemoFile: vi.fn().mockResolvedValue(undefined),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -64,13 +68,16 @@ describe("OnboardingDialog", () => {
       screen.getByRole("heading", { name: "动手体验 Agent 流程" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成引导" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "进入演示" }));
     await userEvent.type(
-      screen.getByRole("textbox", { name: "先输入你的名字或用户 ID" }),
+      screen.getByRole("textbox", { name: "名字或用户 ID" }),
       "小明",
     );
-    await userEvent.click(screen.getByRole("button", { name: "开始第 1 步" }));
     await userEvent.click(
-      screen.getByRole("button", { name: "下一步：在桌面创建文件" }),
+      screen.getByRole("button", { name: "下一步：查看演示计划" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "下一步：创建桌面文件" }),
     );
     expect(props.onRunDemo).toHaveBeenCalledWith("小明");
     expect(screen.getByRole("button", { name: "完成引导" })).toBeEnabled();
@@ -80,8 +87,10 @@ describe("OnboardingDialog", () => {
     const props = makeProps({ claudeCliAvailable: false });
     render(<OnboardingDialog {...props} />);
     await userEvent.click(screen.getByRole("button", { name: "下一步" }));
-    await userEvent.click(screen.getByRole("button", { name: "复制安装命令" }));
-    expect(props.onCopyInstallCommand).toHaveBeenCalledTimes(1);
+    await userEvent.click(
+      screen.getByRole("button", { name: "一键安装 Claude Code" }),
+    );
+    expect(props.onInstallClaude).toHaveBeenCalledTimes(1);
     expect(
       screen.getByRole("button", { name: "重新检测" }),
     ).toBeInTheDocument();

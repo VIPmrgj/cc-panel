@@ -18,6 +18,13 @@ pub fn resolve_claude_executable() -> Option<PathBuf> {
             directories.push(npm);
         }
     }
+    #[cfg(windows)]
+    if let Some(user_profile) = env::var_os("USERPROFILE") {
+        let local_bin = PathBuf::from(user_profile).join(".local").join("bin");
+        if !directories.iter().any(|directory| directory == &local_bin) {
+            directories.push(local_bin);
+        }
+    }
     resolve_in_directories(directories)
 }
 

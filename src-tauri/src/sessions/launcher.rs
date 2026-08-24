@@ -608,7 +608,12 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&real, &link).unwrap();
         #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+        if let Err(error) = std::os::windows::fs::symlink_dir(&real, &link) {
+            if error.raw_os_error() == Some(1314) {
+                return;
+            }
+            panic!("failed to create test symlink: {error}");
+        }
 
         let mut options = LaunchOptions::new(SessionMode::Continue);
         options.cwd = Some(link);

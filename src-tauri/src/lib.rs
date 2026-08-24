@@ -63,6 +63,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_bootstrap,
+            commands::install_claude_code,
+            commands::start_claude_login,
             commands::choose_project_root,
             commands::clear_project_root,
             commands::choose_additional_root,
@@ -91,6 +93,7 @@ pub fn run() {
             commands::restore_model_profile_selection,
             commands::list_conversations,
             commands::run_demo_sandbox,
+            commands::open_demo_file,
             commands::delete_conversation,
             commands::rename_conversation,
             commands::set_conversation_favorite,

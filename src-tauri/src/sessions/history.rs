@@ -427,8 +427,13 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&real_project, &linked_project).unwrap();
         #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&real_project, &linked_project).unwrap();
+        if let Err(error) = std::os::windows::fs::symlink_dir(&real_project, &linked_project) {
+            if error.raw_os_error() == Some(1314) {
+                return;
+            }
 
+            panic!("failed to create test symlink: {error}");
+        }
         assert!(matches!(
             HistoryLoader::new(temp.path()).load(session, None),
             Err(HistoryError::NotFound)

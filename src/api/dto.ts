@@ -125,6 +125,8 @@ export interface BootstrapResponse {
   ollama: OllamaStatus;
   attachments: AttachmentRecord[];
   claudeCodeVersion: string | null;
+  claudeCodeAuthenticated: boolean;
+  gitAvailable: boolean;
 }
 
 export interface EnhancePromptResponse {

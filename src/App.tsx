@@ -47,6 +47,7 @@ import {
 } from "./components/skills/skillMode";
 import { StatusBar } from "./components/shell/StatusBar";
 import { SettingsPanel } from "./components/shell/SettingsPanel";
+import { SetupCenter } from "./components/setup/SetupCenter";
 import { AddModelDialog } from "./components/models/AddModelDialog";
 import { ModelManager } from "./components/models/ModelManager";
 import { ChatComposer } from "./components/chat/ChatComposer";
@@ -169,7 +170,7 @@ export default function App() {
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [showFinalPrompt, setShowFinalPrompt] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingBusy, setOnboardingBusy] = useState(false);
+  const [claudeSetupBusy, setClaudeSetupBusy] = useState(false);
   const autoPromptedRef = useRef(false);
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
@@ -241,7 +242,7 @@ export default function App() {
   const profiles = profilesQuery.data?.profiles ?? [];
   const selectedProfile = profiles.find((profile) => profile.selected) ?? null;
 
-  const claudeOk = bootstrap?.skills.claudeCliAvailable ?? false;
+  const claudeOk = Boolean(bootstrap?.claudeCodeVersion);
   const projectOk = Boolean(bootstrap?.preferences.selectedProjectRoot);
   const modelOk = profiles.some(
     (profile) => profile.selected && profile.hasApiKey,
@@ -327,6 +328,48 @@ export default function App() {
     },
     [reportError],
   );
+
+  const installClaudeCode = useCallback(async () => {
+    setClaudeSetupBusy(true);
+    setOperationMessage("正在使用 Claude 官方安装流程安装 Claude Code…");
+    setLiveMessage("正在安装 Claude Code，请稍候。");
+    try {
+      await commands.installClaudeCode();
+      await bootstrapQuery.refetch();
+      setOperationMessage("Claude Code 安装完成，请继续登录。");
+      setLiveMessage("Claude Code 已安装，下一步可以开始登录。");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setClaudeSetupBusy(false);
+    }
+  }, [bootstrapQuery, reportError]);
+
+  const startClaudeLogin = useCallback(async () => {
+    setClaudeSetupBusy(true);
+    try {
+      await commands.startClaudeLogin();
+      setOperationMessage("登录窗口已打开，请在新窗口中完成 Claude 登录。");
+      setLiveMessage("登录完成后回到 CC Panel，点击重新检测。");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setClaudeSetupBusy(false);
+    }
+  }, [reportError]);
+
+  const recheckClaudeSetup = useCallback(async () => {
+    setClaudeSetupBusy(true);
+    try {
+      await bootstrapQuery.refetch();
+      setOperationMessage("已重新检测本机环境。");
+      setLiveMessage("环境状态已更新。");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setClaudeSetupBusy(false);
+    }
+  }, [bootstrapQuery, reportError]);
 
   const projectMemoryMutation = useMutation({
     mutationFn: commands.saveProjectMemory,
@@ -1063,7 +1106,12 @@ export default function App() {
 
       if (!queued && !sentComposer?.originalPrompt.trim()) return;
       if (missingPrerequisites) {
-        setOnboardingOpen(true);
+        setOperationMessage(
+          "当前还不能发送，已保留你输入的内容。请先完成环境配置。",
+        );
+        setLiveMessage(
+          "未配置完成的消息不会丢失，请使用连接中心完成安装、登录或配置。",
+        );
         return;
       }
 
@@ -2021,6 +2069,20 @@ export default function App() {
             onPermission={respondToPermission}
             onRetryPermission={retryPermission}
           />
+          {missingPrerequisites && !onboardingOpen && (
+            <SetupCenter
+              claudeInstalled={claudeOk}
+              claudeAuthenticated={bootstrap.claudeCodeAuthenticated}
+              gitAvailable={bootstrap.gitAvailable}
+              projectReady={projectOk}
+              modelReady={modelOk}
+              busy={claudeSetupBusy}
+              onInstall={() => void installClaudeCode()}
+              onLogin={() => void startClaudeLogin()}
+              onRecheck={() => void recheckClaudeSetup()}
+              onOpenSetup={() => setOnboardingOpen(true)}
+            />
+          )}
           <ChatComposer
             value={composer.originalPrompt}
             busy={lifecycleBusy}
@@ -2145,32 +2207,20 @@ export default function App() {
       <OnboardingDialog
         open={onboardingOpen}
         claudeCliAvailable={claudeOk}
+        claudeAuthenticated={bootstrap.claudeCodeAuthenticated}
+        gitAvailable={bootstrap.gitAvailable}
         projectLabel={bootstrap.preferences.selectedProjectRoot?.label ?? null}
         modelReady={modelOk}
         experienceMode={experienceMode}
         ollama={bootstrap.ollama}
-        busy={onboardingBusy || rootsMutation.isPending}
+        busy={rootsMutation.isPending}
         onRunDemo={runDemoSandbox}
+        onOpenDemoFile={commands.openDemoFile}
         ollamaSaving={ollamaMutation.isPending}
         onExperienceModeChange={handleExperienceModeChange}
-        onCopyInstallCommand={async () => {
-          setOnboardingBusy(true);
-          try {
-            await writeText("irm https://claude.ai/install.ps1 | iex");
-            const message =
-              "安装命令已复制，请在 PowerShell 中运行后回来点「重新检测」。";
-            setOperationMessage(message);
-            setLiveMessage(message);
-          } catch {
-            setOperationMessage("复制失败，请手动复制安装命令。");
-          } finally {
-            setOnboardingBusy(false);
-          }
-        }}
-        onRecheckClaude={() => {
-          setOnboardingBusy(true);
-          void bootstrapQuery.refetch().finally(() => setOnboardingBusy(false));
-        }}
+        onInstallClaude={() => void installClaudeCode()}
+        onStartClaudeLogin={() => void startClaudeLogin()}
+        onRecheckClaude={() => void recheckClaudeSetup()}
         onSelectProject={() => rootsMutation.mutate("project")}
         onAddModel={() => setModelDialog(null)}
         onSelectOllamaModel={(model) => ollamaMutation.mutate(model)}

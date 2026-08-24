@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, process::Command};
 
 use crate::dto::{ApiError, ApiResult, DemoRunResult};
 
@@ -51,6 +51,74 @@ pub fn run_demo_sandbox(user_id: String, _app: tauri::AppHandle) -> ApiResult<De
     })
 }
 
+#[tauri::command]
+pub fn open_demo_file(file_name: String) -> ApiResult<()> {
+    if !is_demo_file_name(&file_name) {
+        return Err(ApiError::new(
+            "INVALID_DEMO_FILE",
+            "只能打开当前演示流程生成的文件。",
+            false,
+        ));
+    }
+    let desktop = dirs::desktop_dir().ok_or_else(|| {
+        ApiError::new(
+            "DESKTOP_DIRECTORY_UNAVAILABLE",
+            "无法确定当前用户的桌面目录。",
+            true,
+        )
+    })?;
+    ensure_regular_directory(&desktop)?;
+    let file_path = desktop.join(&file_name);
+    let metadata = fs::symlink_metadata(&file_path).map_err(|_| {
+        ApiError::new(
+            "DEMO_FILE_NOT_FOUND",
+            "没有找到演示文件，请先完成演示。",
+            true,
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(ApiError::new(
+            "UNSAFE_DEMO_FILE",
+            "演示文件不是普通文件，已停止打开。",
+            false,
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        let target = format!("/select,{}", file_path.display());
+        Command::new("explorer.exe")
+            .arg(target)
+            .spawn()
+            .map_err(|_| ApiError::new("DESKTOP_OPEN_FAILED", "无法打开桌面文件夹。", true))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|_| ApiError::new("DESKTOP_OPEN_FAILED", "无法打开演示文件。", true))?;
+        return Ok(());
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|_| ApiError::new("DESKTOP_OPEN_FAILED", "无法打开演示文件。", true))?;
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
+fn is_demo_file_name(file_name: &str) -> bool {
+    let path = Path::new(file_name);
+    path.file_name().and_then(|name| name.to_str()) == Some(file_name)
+        && file_name.starts_with("hello_")
+        && file_name.ends_with(".html")
+}
 fn ensure_regular_directory(path: &Path) -> ApiResult<()> {
     if path.exists() {
         let metadata =

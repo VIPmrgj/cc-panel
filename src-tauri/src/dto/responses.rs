@@ -145,6 +145,8 @@ pub struct BootstrapResponse {
     pub ollama: OllamaStatus,
     pub attachments: Vec<AttachmentRecord>,
     pub claude_code_version: Option<String>,
+    pub claude_code_authenticated: bool,
+    pub git_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

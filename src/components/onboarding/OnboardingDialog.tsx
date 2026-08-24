@@ -2,7 +2,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clipboard,
   FolderOpen,
   KeyRound,
   RotateCw,
@@ -19,6 +18,8 @@ import { DemoPanel } from "../demo/DemoPanel";
 interface Props {
   open: boolean;
   claudeCliAvailable: boolean;
+  claudeAuthenticated: boolean;
+  gitAvailable: boolean;
   projectLabel: string | null;
   modelReady: boolean;
   experienceMode: ExperienceMode;
@@ -27,18 +28,23 @@ interface Props {
 
   ollamaSaving?: boolean;
   onExperienceModeChange: (mode: ExperienceMode) => void;
-  onCopyInstallCommand: () => void;
+  onInstallClaude: () => void;
+  onStartClaudeLogin: () => void;
   onRecheckClaude: () => void;
   onSelectProject: () => void;
   onAddModel: () => void;
   onSelectOllamaModel: (model: string | null) => void;
   onRunDemo: (userId: string) => Promise<DemoRunResult>;
+  onOpenDemoFile: (fileName: string) => Promise<void>;
+  onDemoSkipped?: () => void;
   onClose: () => void;
 }
 
 export function OnboardingDialog({
   open,
   claudeCliAvailable,
+  claudeAuthenticated,
+  gitAvailable,
   projectLabel,
   modelReady,
   experienceMode,
@@ -47,12 +53,15 @@ export function OnboardingDialog({
 
   ollamaSaving = false,
   onExperienceModeChange,
-  onCopyInstallCommand,
+  onInstallClaude,
+  onStartClaudeLogin,
   onRecheckClaude,
   onSelectProject,
   onAddModel,
   onSelectOllamaModel,
   onRunDemo,
+  onOpenDemoFile,
+  onDemoSkipped,
   onClose,
 }: Props) {
   const titleId = useId();
@@ -159,7 +168,11 @@ export function OnboardingDialog({
               title="1. 检查 Claude Code"
               detail={
                 claudeCliAvailable
-                  ? "已检测到 Claude Code，可以在本机启动会话。"
+                  ? claudeAuthenticated
+                    ? gitAvailable
+                      ? "已安装并登录，可以在本机启动会话。"
+                      : "已安装并登录；建议补充安装 Git for Windows。"
+                    : "已安装，但还未登录 Claude 账户。"
                   : "CC Panel 需要调用本机的官方 Claude Code 命令行。"
               }
               ready={claudeCliAvailable}
@@ -167,12 +180,22 @@ export function OnboardingDialog({
                 <>
                   {!claudeCliAvailable && (
                     <Button
-                      variant="secondary"
+                      variant="primary"
                       busy={busy}
-                      icon={<Clipboard size={14} />}
-                      onClick={onCopyInstallCommand}
+                      icon={<KeyRound size={14} />}
+                      onClick={onInstallClaude}
                     >
-                      复制安装命令
+                      一键安装 Claude Code
+                    </Button>
+                  )}
+                  {claudeCliAvailable && !claudeAuthenticated && (
+                    <Button
+                      variant="primary"
+                      busy={busy}
+                      icon={<KeyRound size={14} />}
+                      onClick={onStartClaudeLogin}
+                    >
+                      开始登录
                     </Button>
                   )}
                   <Button
@@ -263,6 +286,11 @@ export function OnboardingDialog({
             <DemoPanel
               onRunSandbox={onRunDemo}
               onCompleted={() => setDemoCompleted(true)}
+              onSkipped={() => {
+                setDemoCompleted(true);
+                onDemoSkipped?.();
+              }}
+              onOpenDemoFile={onOpenDemoFile}
             />
           </div>
         )}

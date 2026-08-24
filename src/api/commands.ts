@@ -47,6 +47,8 @@ async function call<T>(
 
 export const commands = {
   getBootstrap: () => call<BootstrapResponse>("get_bootstrap"),
+  installClaudeCode: () => call<void>("install_claude_code"),
+  startClaudeLogin: () => call<void>("start_claude_login"),
   chooseProjectRoot: () => call<RootEntry | null>("choose_project_root"),
   clearProjectRoot: () => call<void>("clear_project_root"),
   chooseAdditionalRoot: () => call<RootEntry | null>("choose_additional_root"),
@@ -125,6 +127,8 @@ export const commands = {
   listConversations: () => call<ConversationSummary[]>("list_conversations"),
   runDemoSandbox: (userId: string) =>
     call<DemoRunResult>("run_demo_sandbox", { userId }),
+  openDemoFile: (fileName: string) =>
+    call<void>("open_demo_file", { fileName }),
   deleteConversation: (sessionId: string) =>
     call<ConversationSummary[]>("delete_conversation", { sessionId }),
   startClaudeSession: (

@@ -9,10 +9,13 @@ import {
   Workflow,
 } from "lucide-react";
 import type { DemoRunResult } from "../../api/dto";
+import { DemoWizard } from "./DemoWizard";
 
 interface Props {
   onRunSandbox: (userId: string) => Promise<DemoRunResult>;
   onCompleted?: () => void;
+  onSkipped?: () => void;
+  onOpenDemoFile?: (fileName: string) => Promise<void>;
 }
 
 type DemoStatus = "idle" | "planned" | "writing" | "completed" | "error";
@@ -25,7 +28,7 @@ const DEMO_STEPS = [
   { title: "展示文件内容与预览", tool: "结果预览", icon: CheckCircle2 },
 ];
 
-export function DemoPanel({ onRunSandbox, onCompleted }: Props) {
+export function LegacyDemoPanel({ onRunSandbox, onCompleted }: Props) {
   const [userId, setUserId] = useState("");
   const [status, setStatus] = useState<DemoStatus>("idle");
   const [step, setStep] = useState(0);
@@ -272,4 +275,8 @@ function stepState(
   if ((status === "planned" || status === "writing") && index === activeStep)
     return "active";
   return "pending";
+}
+
+export function DemoPanel(props: Props) {
+  return <DemoWizard {...props} />;
 }
