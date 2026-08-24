@@ -2006,6 +2006,15 @@ kbd {
   border-radius: 11px 3px 11px 11px;
   background: rgba(148, 163, 184, 0.075);
 }
+.chat-message--assistant .chat-message__content {
+  width: min(100%, 820px);
+  max-width: 88%;
+  padding: 10px 13px;
+  border: 1px solid var(--chat-border);
+  border-radius: 3px 11px 11px 11px;
+  background: var(--chat-surface-raised);
+}
+
 .chat-message--user .chat-message__meta {
   justify-content: flex-end;
 }
@@ -3332,6 +3341,28 @@ kbd {
 .app-frame[data-theme="light"] .chat-message--user .chat-message__content {
   border-color: #e0e0e2;
   background: #eeeeef;
+}
+.app-frame[data-theme="light"] .chat-message--assistant .chat-message__content {
+  border-color: #dedee1;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.035);
+}
+.app-frame[data-theme="light"] .chat-message__meta,
+.app-frame[data-theme="light"] .chat-message__content,
+.app-frame[data-theme="light"] .markdown-body {
+  color: #000000;
+}
+.app-frame[data-theme="light"] .markdown-body h1,
+.app-frame[data-theme="light"] .markdown-body h2,
+.app-frame[data-theme="light"] .markdown-body h3 {
+  color: #000000;
+}
+.app-frame[data-theme="light"] .markdown-body blockquote {
+  color: #202020;
+}
+.app-frame[data-theme="light"] .markdown-body code:not(pre code) {
+  color: #000000;
+  background: #f1f1f2;
 }
 .app-frame[data-theme="light"] .chat-message__avatar {
   color: #666669;
