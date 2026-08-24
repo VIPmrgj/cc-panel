@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SetupCenter } from "./SetupCenter";
+import { InstallProgressView, SetupCenter } from "./SetupCenter";
 
 function renderSetup(
   overrides: Partial<React.ComponentProps<typeof SetupCenter>> = {},
@@ -13,7 +13,7 @@ function renderSetup(
     projectReady: false,
     modelReady: false,
     onInstall: vi.fn(),
-    onLogin: vi.fn(),
+    onOpenModels: vi.fn(),
     onRecheck: vi.fn(),
     onOpenSetup: vi.fn(),
     ...overrides,
@@ -30,9 +30,7 @@ describe("SetupCenter", () => {
       screen.getByRole("button", { name: "一键准备国内环境" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/输入内容会保留/)).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "一键准备国内环境" }),
-    );
+    await user.click(screen.getByRole("button", { name: "一键准备国内环境" }));
     expect(props.onInstall).toHaveBeenCalledTimes(1);
   });
 
@@ -40,13 +38,33 @@ describe("SetupCenter", () => {
     renderSetup({ claudeInstalled: true, gitAvailable: true });
 
     expect(
-      screen.getByRole("button", { name: "打开 CC-Switch 配置" }),
+      screen.getByRole("button", { name: "打开模型配置" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "一键准备国内环境" }),
     ).toBeNull();
   });
 
+  it("shows the current installation step and busy state", () => {
+    render(
+      <InstallProgressView
+        progress={{
+          step: 2,
+          totalSteps: 5,
+          phase: "git",
+          status: "running",
+          message: null,
+        }}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(status).getByText("Git", { selector: "strong" }),
+    ).toBeInTheDocument();
+    expect(within(status).getByText(/正在处理\s*Git/)).toBeInTheDocument();
+  });
   it("does not render when the real agent is ready", () => {
     const { container } = renderSetup({
       claudeInstalled: true,

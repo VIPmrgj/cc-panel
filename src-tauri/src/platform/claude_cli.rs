@@ -14,9 +14,10 @@ pub fn resolve_claude_executable() -> Option<PathBuf> {
     #[cfg(windows)]
     if let Some(app_data) = env::var_os("APPDATA") {
         let npm = PathBuf::from(app_data).join("npm");
-        if !directories.iter().any(|directory| directory == &npm) {
-            directories.push(npm);
+        if let Some(index) = directories.iter().position(|directory| directory == &npm) {
+            directories.remove(index);
         }
+        directories.insert(0, npm);
     }
     #[cfg(windows)]
     if let Some(user_profile) = env::var_os("USERPROFILE") {

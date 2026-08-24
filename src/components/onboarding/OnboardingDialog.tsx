@@ -9,27 +9,30 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { OllamaStatus } from "../../api/dto";
+import type { DomesticInstallProgress, OllamaStatus } from "../../api/dto";
 import type { ExperienceMode } from "../../state/experienceMode";
 import type { DemoRunResult } from "../../api/dto";
 import { Button } from "../common/Button";
 import { DemoPanel } from "../demo/DemoPanel";
+import { InstallProgressView } from "../setup/SetupCenter";
 
 interface Props {
   open: boolean;
   claudeCliAvailable: boolean;
   claudeAuthenticated: boolean;
   gitAvailable: boolean;
+  environmentReady?: boolean;
   projectLabel: string | null;
   modelReady: boolean;
   experienceMode: ExperienceMode;
   ollama: OllamaStatus;
   busy: boolean;
+  installProgress?: DomesticInstallProgress | null;
 
   ollamaSaving?: boolean;
   onExperienceModeChange: (mode: ExperienceMode) => void;
   onInstallClaude: () => void;
-  onStartClaudeLogin: () => void;
+  onOpenModelConfig: () => void;
   onRecheckClaude: () => void;
   onSelectProject: () => void;
   onAddModel: () => void;
@@ -45,16 +48,18 @@ export function OnboardingDialog({
   claudeCliAvailable,
   claudeAuthenticated,
   gitAvailable,
+  environmentReady,
   projectLabel,
   modelReady,
   experienceMode,
   ollama,
   busy,
+  installProgress = null,
 
   ollamaSaving = false,
   onExperienceModeChange,
   onInstallClaude,
-  onStartClaudeLogin,
+  onOpenModelConfig,
   onRecheckClaude,
   onSelectProject,
   onAddModel,
@@ -71,7 +76,8 @@ export function OnboardingDialog({
   const [step, setStep] = useState(0);
   const [demoCompleted, setDemoCompleted] = useState(false);
   const totalSteps = 6;
-  const domesticEnvironmentReady = claudeCliAvailable && gitAvailable;
+  const domesticEnvironmentReady =
+    environmentReady ?? (claudeCliAvailable && gitAvailable);
   const stepLabels = [
     "选择体验方式",
     "检查 Claude Code",
@@ -166,33 +172,55 @@ export function OnboardingDialog({
           <div className="onboarding-list" data-active-step={step}>
             <OnboardingRow
               icon={<KeyRound size={15} aria-hidden="true" />}
-              title={"1. \u68c0\u67e5 Claude Code \u4e0e\u56fd\u5185\u73af\u5883"}
+              title={
+                "1. \u68c0\u67e5 Claude Code \u4e0e\u56fd\u5185\u73af\u5883"
+              }
               detail={
                 !domesticEnvironmentReady
-                  ? "\u70b9\u51fb\u4e00\u952e\u51c6\u5907\uff0c\u81ea\u52a8\u5b89\u88c5 Node.js\u3001Git\u3001Claude Code \u548c CC-Switch\u3002"
+                  ? "\u70b9\u51fb\u4e00\u952e\u51c6\u5907\uff0c\u81ea\u52a8\u5b89\u88c5 Node.js\u3001Git\u3001Claude Code\u3002"
                   : claudeAuthenticated
-                    ? "\u73af\u5883\u5df2\u51c6\u5907\uff0c\u53ef\u4f7f\u7528 CC-Switch \u6216 CC Panel \u6a21\u578b\u914d\u7f6e\u3002"
-                    : "Claude Code \u5df2\u5b89\u88c5\uff0c\u8fd8\u9700\u8981\u5728 CC-Switch \u4e2d\u914d\u7f6e\u4e00\u4e2a\u7b2c\u4e09\u65b9\u6a21\u578b\u3002"
+                    ? "\u73af\u5883\u5df2\u51c6\u5907\uff0c\u53ef\u5728 CC Panel \u7684\u6a21\u578b\u680f\u5b8c\u6210\u6a21\u578b\u914d\u7f6e\u3002"
+                    : "Claude Code \u73af\u5883\u5df2\u5b8c\u6210\uff0c\u8bf7\u5728 CC Panel \u7684\u6a21\u578b\u680f\u914d\u7f6e\u4e00\u4e2a\u7b2c\u4e09\u65b9\u6a21\u578b\u3002"
               }
               ready={domesticEnvironmentReady}
               actions={
                 <>
                   {!domesticEnvironmentReady && (
-                    <Button variant="primary" busy={busy} icon={<KeyRound size={14} />} onClick={onInstallClaude}>
+                    <Button
+                      variant="primary"
+                      busy={busy}
+                      icon={<KeyRound size={14} />}
+                      onClick={onInstallClaude}
+                    >
                       {"\u4e00\u952e\u51c6\u5907\u56fd\u5185\u73af\u5883"}
                     </Button>
                   )}
                   {domesticEnvironmentReady && !claudeAuthenticated && (
-                    <Button variant="primary" busy={busy} icon={<KeyRound size={14} />} onClick={onStartClaudeLogin}>
-                      {"\u6253\u5f00 CC-Switch \u914d\u7f6e"}
+                    <Button
+                      variant="primary"
+                      busy={busy}
+                      icon={<KeyRound size={14} />}
+                      onClick={onOpenModelConfig}
+                    >
+                      {"\u6253\u5f00\u6a21\u578b\u914d\u7f6e"}
                     </Button>
                   )}
-                  <Button variant="ghost" busy={busy} icon={<RotateCw size={14} />} onClick={onRecheckClaude}>
+                  <Button
+                    variant="ghost"
+                    busy={busy}
+                    icon={<RotateCw size={14} />}
+                    onClick={onRecheckClaude}
+                  >
                     {"\u91cd\u65b0\u68c0\u6d4b"}
                   </Button>
                 </>
               }
-            />            <OnboardingRow
+            />
+            {installProgress &&
+              (busy || installProgress.status === "failed") && (
+                <InstallProgressView progress={installProgress} />
+              )}
+            <OnboardingRow
               icon={<FolderOpen size={15} aria-hidden="true" />}
               title="2. 选择工作文件夹"
               detail={

@@ -131,7 +131,19 @@ export interface BootstrapResponse {
   npmVersion: string | null;
   npmMirrorConfigured: boolean;
   gitAvailable: boolean;
-  ccSwitchInstalled: boolean;
+}
+
+export type DomesticInstallPhase =
+  "node" | "git" | "npm" | "claude" | "onboarding" | "complete";
+
+export type DomesticInstallStatus = "running" | "completed" | "failed";
+
+export interface DomesticInstallProgress {
+  step: number;
+  totalSteps: number;
+  phase: DomesticInstallPhase;
+  status: DomesticInstallStatus;
+  message?: string | null;
 }
 
 export interface EnhancePromptResponse {

@@ -30,7 +30,7 @@ function makeProps(
     ollamaSaving: false,
     onExperienceModeChange: vi.fn(),
     onInstallClaude: vi.fn(),
-    onStartClaudeLogin: vi.fn(),
+    onOpenModelConfig: vi.fn(),
     onRecheckClaude: vi.fn(),
     onSelectProject: vi.fn(),
     onAddModel: vi.fn(),

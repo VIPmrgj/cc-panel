@@ -151,7 +151,6 @@ pub struct BootstrapResponse {
     pub npm_version: Option<String>,
     pub npm_mirror_configured: bool,
     pub git_available: bool,
-    pub cc_switch_installed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

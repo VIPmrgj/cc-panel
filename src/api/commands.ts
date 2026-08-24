@@ -46,10 +46,7 @@ async function call<T>(
 }
 export const commands = {
   getBootstrap: () => call<BootstrapResponse>("get_bootstrap"),
-  installClaudeCode: () => call<void>("install_claude_code"),
-  startClaudeLogin: () => call<void>("start_claude_login"),
   installDomesticEnvironment: () => call<void>("install_domestic_environment"),
-  startCcSwitch: () => call<void>("start_cc_switch"),
   chooseProjectRoot: () => call<RootEntry | null>("choose_project_root"),
   clearProjectRoot: () => call<void>("clear_project_root"),
   chooseAdditionalRoot: () => call<RootEntry | null>("choose_additional_root"),

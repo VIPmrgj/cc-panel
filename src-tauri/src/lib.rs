@@ -63,10 +63,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_bootstrap,
-            commands::install_claude_code,
-            commands::start_claude_login,
             commands::install_domestic_environment,
-            commands::start_cc_switch,
             commands::choose_project_root,
             commands::clear_project_root,
             commands::choose_additional_root,

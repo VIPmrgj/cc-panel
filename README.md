@@ -6,7 +6,7 @@ CC Panel 是运行在 Windows 上的 Claude Code 本地图形控制面板。它�
 
 ## 下载体验
 
-Windows 用户可以直接下载当前体验版：[CC Panel 0.1.13 安装包](./CC%20Panel_0.1.13_x64-setup.exe)。没有 API Key 时也可以先使用“演示模式”；真实 Agent 对话可通过 CC-Switch 或 CC Panel 的模型栏配置第三方模型。
+Windows 用户可以直接下载当前体验版：[CC Panel 0.1.14 安装包](./CC%20Panel_0.1.14_x64-setup.exe)。没有 API Key 时也可以先使用“演示模式”；真实 Agent 对话直接在 CC Panel 的模型栏配置第三方模型，不需要 CC-Switch。
 
 ## 当前能力
 
@@ -118,7 +118,7 @@ cargo test --all-features
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-当前自动化基线：前端 11 个测试文件、33 个测试；Rust 62 个测试。Vite 生产构建成功，但主 JS chunk 仍会触发大于 500 kB 的非致命警告。
+当前自动化基线：前端 20 个测试文件、83 个测试；Rust 测试会在发布前完整运行。Vite 生产构建成功，但主 JS chunk 仍会触发大于 500 kB 的非致命警告。
 
 ## 手工验收清单
 

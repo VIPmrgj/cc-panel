@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { Channel } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   isPermissionGranted,
@@ -23,6 +24,7 @@ import type {
   CompositionRequest,
   CompositionResult,
   DiagnosticResult,
+  DomesticInstallProgress,
   DemoRunResult,
   DownloadedUpdate,
   EnvironmentReport,
@@ -171,6 +173,28 @@ export default function App() {
   const [showFinalPrompt, setShowFinalPrompt] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [claudeSetupBusy, setClaudeSetupBusy] = useState(false);
+  const [installProgress, setInstallProgress] =
+    useState<DomesticInstallProgress | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    listen<DomesticInstallProgress>(
+      "cc-panel://domestic-install-progress",
+      (event) => {
+        if (!disposed) setInstallProgress(event.payload);
+      },
+    )
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
   const autoPromptedRef = useRef(false);
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
@@ -247,7 +271,15 @@ export default function App() {
   const modelOk = profiles.some(
     (profile) => profile.selected && profile.hasApiKey,
   );
-  const claudeReady = claudeOk && (Boolean(bootstrap?.claudeCodeConfigured) || modelOk)
+  const runtimeReady = Boolean(
+    claudeOk &&
+    bootstrap?.nodeVersion &&
+    bootstrap?.npmVersion &&
+    bootstrap?.npmMirrorConfigured &&
+    bootstrap?.gitAvailable,
+  );
+  const claudeReady =
+    runtimeReady && (Boolean(bootstrap?.claudeCodeConfigured) || modelOk);
   const missingPrerequisites = !claudeReady || !projectOk || !modelOk;
   const conversations = useMemo(
     () => conversationsQuery.data ?? [],
@@ -332,33 +364,52 @@ export default function App() {
 
   const installClaudeCode = useCallback(async () => {
     setClaudeSetupBusy(true);
-    setOperationMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\u2026");
-    setLiveMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002");
+    setInstallProgress({
+      step: 1,
+      totalSteps: 5,
+      phase: "node",
+      status: "running",
+    });
+    setOperationMessage(
+      "\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\u2026",
+    );
+    setLiveMessage(
+      "\u5c06\u6309\u7167 Node.js\u3001Git\u3001npm \u955c\u50cf\u3001Claude Code \u548c\u9996\u6b21\u914d\u7f6e\u4f9d\u6b21\u5904\u7406\u3002",
+    );
     try {
       await commands.installDomesticEnvironment();
       await bootstrapQuery.refetch();
-      setOperationMessage("\u56fd\u5185\u73af\u5883\u5df2\u51c6\u5907\u5b8c\u6210\u3002");
-      setLiveMessage("Node.js\u3001Git\u3001npm \u955c\u50cf\u3001Claude Code \u548c CC-Switch \u5df2\u5904\u7406\uff1b\u63a5\u4e0b\u6765\u8bf7\u914d\u7f6e\u4f60\u7684\u6a21\u578b\u6765\u6e90\u3002");
+      setOperationMessage(
+        "\u56fd\u5185\u73af\u5883\u5df2\u51c6\u5907\u5b8c\u6210\u3002",
+      );
+      setLiveMessage(
+        "Claude Code \u5df2\u66f4\u65b0\u5e76\u5b8c\u6210\u9996\u6b21\u914d\u7f6e\uff1b\u73b0\u5728\u53ef\u5728 CC Panel \u6a21\u578b\u680f\u914d\u7f6e\u6a21\u578b\u3002",
+      );
     } catch (error) {
       reportError(error);
+      await bootstrapQuery.refetch().catch(() => undefined);
+      setInstallProgress((current) => ({
+        step: current?.step ?? 1,
+        totalSteps: current?.totalSteps ?? 5,
+        phase: current?.phase ?? "node",
+        status: "failed",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "\u56fd\u5185\u73af\u5883\u51c6\u5907\u5931\u8d25",
+      }));
+      setLiveMessage(
+        "\u56fd\u5185\u73af\u5883\u6ca1\u6709\u5b8c\u6210\uff0c\u5df2\u4fdd\u7559\u5df2\u5b8c\u6210\u7684\u6b65\u9aa4\uff0c\u53ef\u4fee\u590d\u540e\u91cd\u8bd5\u3002",
+      );
     } finally {
       setClaudeSetupBusy(false);
     }
   }, [bootstrapQuery, reportError]);
 
-  const startClaudeLogin = useCallback(async () => {
-    setClaudeSetupBusy(true);
-    try {
-      await commands.startCcSwitch();
-      setOperationMessage("\u5df2\u6253\u5f00 CC-Switch\uff0c\u8bf7\u5728\u5176\u4e2d\u5b8c\u6210\u6a21\u578b\u914d\u7f6e\u3002");
-      setLiveMessage("\u914d\u7f6e\u5b8c\u6210\u540e\u56de\u5230 CC Panel\uff0c\u70b9\u51fb\u91cd\u65b0\u68c0\u6d4b\u3002");
-    } catch (error) {
-      reportError(error);
-    } finally {
-      setClaudeSetupBusy(false);
-    }
-  }, [reportError]);
-
+  const openModelConfig = useCallback(() => {
+    setActiveActivity("models");
+    setPanelOpen(true);
+  }, []);
   const recheckClaudeSetup = useCallback(async () => {
     setClaudeSetupBusy(true);
     try {
@@ -477,7 +528,9 @@ export default function App() {
       setOperationMessage(
         "Skill 状态已保存。现有会话请使用 /reload-plugins 或重启；已载入的上下文不会被移除。",
       );
-      setLiveMessage("\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002");
+      setLiveMessage(
+        "\u6b63\u5728\u51c6\u5907\u56fd\u5185\u73af\u5883\uff0c\u8bf7\u7a0d\u5019\u3002",
+      );
     },
     onError: reportError,
   });
@@ -2075,15 +2128,17 @@ export default function App() {
               claudeInstalled={claudeOk}
               claudeAuthenticated={bootstrap.claudeCodeConfigured || modelOk}
               gitAvailable={bootstrap.gitAvailable}
+
               nodeReady={Boolean(bootstrap.nodeVersion)}
               npmReady={Boolean(bootstrap.npmVersion)}
               npmMirrorConfigured={bootstrap.npmMirrorConfigured}
-              ccSwitchInstalled={bootstrap.ccSwitchInstalled}
               projectReady={projectOk}
               modelReady={modelOk}
               busy={claudeSetupBusy}
+              installProgress={installProgress}
+              onOpenModels={openModelConfig}
               onInstall={() => void installClaudeCode()}
-              onLogin={() => void startClaudeLogin()}
+
               onRecheck={() => void recheckClaudeSetup()}
               onOpenSetup={() => setOnboardingOpen(true)}
             />
@@ -2214,17 +2269,20 @@ export default function App() {
         claudeCliAvailable={claudeOk}
         claudeAuthenticated={bootstrap.claudeCodeConfigured || modelOk}
         gitAvailable={bootstrap.gitAvailable}
+        environmentReady={runtimeReady}
+
         projectLabel={bootstrap.preferences.selectedProjectRoot?.label ?? null}
         modelReady={modelOk}
         experienceMode={experienceMode}
         ollama={bootstrap.ollama}
-        busy={rootsMutation.isPending}
+        busy={rootsMutation.isPending || claudeSetupBusy}
+        installProgress={installProgress}
         onRunDemo={runDemoSandbox}
         onOpenDemoFile={commands.openDemoFile}
         ollamaSaving={ollamaMutation.isPending}
         onExperienceModeChange={handleExperienceModeChange}
         onInstallClaude={() => void installClaudeCode()}
-        onStartClaudeLogin={() => void startClaudeLogin()}
+        onOpenModelConfig={openModelConfig}
         onRecheckClaude={() => void recheckClaudeSetup()}
         onSelectProject={() => rootsMutation.mutate("project")}
         onAddModel={() => setModelDialog(null)}
