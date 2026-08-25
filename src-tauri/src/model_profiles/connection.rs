@@ -22,7 +22,7 @@ pub async fn test_connection(secret: ResolvedModelSecret) -> ApiResult<ModelConn
         .map_err(|_| ApiError::new("MODEL_TEST_CLIENT_FAILED", "无法初始化模型连接测试。", true))?;
     let request = json!({
         "model": secret.profile.model_id,
-        "max_tokens": 1,
+        "max_tokens": 16,
         "messages": [{
             "role": "user",
             "content": "Reply with OK"

@@ -24,7 +24,7 @@ function makeProps(
     testing: false,
     savedProfile: null,
     testResult: null,
-    onSave: vi.fn(),
+    onSave: vi.fn().mockResolvedValue(true),
     onTest: vi.fn(),
     onOpenAdvanced: vi.fn(),
     onClose: vi.fn(),
@@ -40,10 +40,11 @@ describe("DeepSeekApiWizard", () => {
         name: "为什么需要 API Key？——就像给汽车加油",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/本软件就像一辆好用的汽车/)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "我已有其他 API Key" }),
+      screen.getByRole("heading", { name: "认识 API" }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/本软件就像一辆好用的汽车/)).toBeInTheDocument();
+    expect(screen.queryByText(/第 \d 步，共 \d 步/)).not.toBeInTheDocument();
   });
 
   it("shows the three-step guide and saves a named default DeepSeek profile", async () => {
@@ -56,8 +57,13 @@ describe("DeepSeekApiWizard", () => {
       screen.getByRole("heading", { name: "三步拿到“加油卡”" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /打开 DeepSeek 平台/ }),
-    ).toHaveAttribute("href", "https://platform.deepseek.com/usage");
+      screen.getByRole("button", {
+        name: /复制网址 https:\/\/platform\.deepseek\.com/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("https://platform.deepseek.com/"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "DeepSeek 登录界面示意图" }),
     ).toBeInTheDocument();
@@ -85,6 +91,9 @@ describe("DeepSeekApiWizard", () => {
       },
       "sk-test-key",
     );
+    expect(
+      screen.getByRole("heading", { name: "测试连接" }),
+    ).toBeInTheDocument();
   });
 
   it("rejects a key that is not copied completely", async () => {
@@ -110,8 +119,12 @@ describe("DeepSeekApiWizard", () => {
     await user.click(
       screen.getByRole("button", { name: "放大查看：登录界面" }),
     );
-    expect(screen.getByRole("dialog", { name: "放大查看：登录界面" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "关闭图片预览" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "放大查看：登录界面" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "关闭图片预览" }),
+    ).toBeInTheDocument();
   });
 
   it("does not test until the user acknowledges possible cost", async () => {
@@ -121,7 +134,7 @@ describe("DeepSeekApiWizard", () => {
     const testButton = screen.getByRole("button", { name: "测试连接" });
     expect(testButton).toBeDisabled();
     await user.click(
-      screen.getByRole("checkbox", { name: "我知道测试可能产生少量 API 费用" }),
+      screen.getByRole("checkbox", { name: /我知道测试可能产生少量 API 费用/ }),
     );
     expect(testButton).toBeEnabled();
     await user.click(testButton);

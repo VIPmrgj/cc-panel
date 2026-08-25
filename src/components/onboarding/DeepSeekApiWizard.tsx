@@ -3,11 +3,11 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ExternalLink,
+  Copy,
   KeyRound,
-  ShieldCheck,
   X,
 } from "lucide-react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useId, useRef, useState } from "react";
 import type {
   ModelConnectionTestResult,
@@ -29,7 +29,10 @@ interface Props {
   testing?: boolean;
   savedProfile?: ModelProfile | null;
   testResult?: ModelConnectionTestResult | null;
-  onSave: (profile: ModelProfileInput, apiKey: string) => void;
+  onSave: (
+    profile: ModelProfileInput,
+    apiKey: string,
+  ) => void | Promise<boolean | void>;
   onTest: (profileId: string) => void;
   onOpenAdvanced: (profile?: ModelProfile | null) => void;
   onClose: () => void;
@@ -79,7 +82,6 @@ export function DeepSeekApiWizard({
   onClose,
 }: Props) {
   const titleId = useId();
-  const descriptionId = useId();
   const panelRef = useRef<HTMLElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
@@ -88,6 +90,8 @@ export function DeepSeekApiWizard({
   const [apiKey, setApiKey] = useState("");
   const [apiKeyError, setApiKeyError] = useState("");
   const [previewImage, setPreviewImage] = useState<TutorialImage | null>(null);
+  const [urlCopied, setUrlCopied] = useState(false);
+  const [urlCopyError, setUrlCopyError] = useState("");
   const [costConfirmed, setCostConfirmed] = useState(false);
   const preset = presetFor("DeepSeek");
 
@@ -95,6 +99,8 @@ export function DeepSeekApiWizard({
   busyRef.current = saving || testing;
 
   useEffect(() => {
+    setUrlCopied(false);
+    setUrlCopyError("");
     if (!open) return;
     setStep(savedProfile ? 2 : 0);
     setApiKey("");
@@ -178,8 +184,9 @@ export function DeepSeekApiWizard({
   };
 
   const canTest = Boolean(savedProfile && costConfirmed && !testing);
-  const progressLabel = "第 " + (step + 1) + " 步，共 3 步";
-  const submitApiKey = () => {
+  const pageTitle =
+    step === 0 ? "认识 API" : step === 1 ? "三步拿到“加油卡”" : "测试连接";
+  const submitApiKey = async () => {
     const normalizedKey = apiKey.trim();
     if (!normalizedKey) {
       setApiKeyError("请先粘贴 DeepSeek API Key。");
@@ -190,8 +197,24 @@ export function DeepSeekApiWizard({
       return;
     }
     setApiKeyError("");
-    onSave(saveProfile, normalizedKey);
-    setApiKey("");
+    try {
+      const result = await onSave(saveProfile, normalizedKey);
+      if (result !== false) {
+        setApiKey("");
+        setStep(2);
+      }
+    } catch {
+      setApiKeyError("保存失败，请检查网络或模型配置后重试。");
+    }
+  };
+  const copyPlatformUrl = async () => {
+    try {
+      await writeText("https://platform.deepseek.com/");
+      setUrlCopied(true);
+      setUrlCopyError("");
+    } catch {
+      setUrlCopyError("网址复制失败，请手动复制。");
+    }
   };
 
   return (
@@ -202,7 +225,6 @@ export function DeepSeekApiWizard({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
       >
         <header className="model-dialog__header">
           <div className="model-dialog__title">
@@ -210,10 +232,7 @@ export function DeepSeekApiWizard({
               <KeyRound size={18} />
             </span>
             <div>
-              <h2 id={titleId}>用 DeepSeek 配置模型</h2>
-              <p id={descriptionId}>
-                这是一个示例流程，其他 API 仍可在高级配置中使用。
-              </p>
+              <h2 id={titleId}>{pageTitle}</h2>
             </div>
           </div>
           <button
@@ -227,24 +246,11 @@ export function DeepSeekApiWizard({
           </button>
         </header>
 
-        <div className="deepseek-wizard__progress" aria-live="polite">
-          <span>{progressLabel}</span>
-          <strong>
-            {["了解流程", "三步拿到“加油卡”", "测试连接"][step]}
-          </strong>
-        </div>
-
         <div className="deepseek-wizard__body">
           {step === 0 && (
             <div className="deepseek-wizard__step">
               <div className="deepseek-wizard__hero">
-                <span className="deepseek-wizard__hero-icon" aria-hidden="true">
-                  <KeyRound size={25} />
-                </span>
                 <div>
-                  <span className="deepseek-wizard__eyebrow">
-                    第 1 步 · 先认识 API
-                  </span>
                   <h3>为什么需要 API Key？——就像给汽车加油</h3>
                   <p>
                     本软件就像一辆好用的汽车，但车要跑起来，得有汽油。AI
@@ -274,58 +280,14 @@ export function DeepSeekApiWizard({
                   </span>
                 </div>
               </div>
-              <div className="deepseek-wizard__flow-preview">
-                <div className="deepseek-wizard__flow-preview-title">
-                  接下来会一步一步完成
-                </div>
-                <div className="deepseek-wizard__flow-steps">
-                  <div className="deepseek-wizard__flow-step">
-                    <span>1</span>
-                    <div>
-                      <strong>打开 DeepSeek 平台</strong>
-                      <small>注册、充值并创建 API Key</small>
-                    </div>
-                  </div>
-                  <div className="deepseek-wizard__flow-step">
-                    <span>2</span>
-                    <div>
-                      <strong>安全保存密钥</strong>
-                      <small>使用推荐的 DeepSeek 配置</small>
-                    </div>
-                  </div>
-                  <div className="deepseek-wizard__flow-step">
-                    <span>3</span>
-                    <div>
-                      <strong>测试连接</strong>
-                      <small>由你确认后发送测试请求</small>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="deepseek-wizard__actions-card">
-                <p>已经有其他服务商的 API Key？可以直接使用高级配置。</p>
-                <Button
-                  variant="ghost"
-                  onClick={() => onOpenAdvanced(null)}
-                  icon={<ArrowRight size={14} />}
-                >
-                  我已有其他 API Key
-                </Button>
-              </div>
             </div>
           )}
 
           {step === 1 && (
             <div className="deepseek-wizard__step deepseek-tutorial">
-              <div className="deepseek-wizard__step-heading">
-                <span className="deepseek-wizard__step-number">1</span>
-                <div>
-                  <h3>三步拿到“加油卡”</h3>
-                  <p>
-                    按下面的顺序完成操作。图片可以点击或双击放大，API Key
-                    只显示一次，请复制完整。
-                  </p>
-                </div>
+              <div className="deepseek-tutorial__intro">
+                按下面的顺序完成操作。图片可以点击放大，API Key
+                只显示一次，请复制完整。
               </div>
 
               <section className="deepseek-tutorial__section">
@@ -333,15 +295,21 @@ export function DeepSeekApiWizard({
                   <span>1</span>
                   <div>
                     <strong>打开 platform.deepseek.com，注册并登录。</strong>
-                    <a
-                      className="deepseek-wizard__external-link"
-                      href="https://platform.deepseek.com/usage"
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      className="deepseek-tutorial__copy-box"
+                      onClick={() => void copyPlatformUrl()}
+                      aria-label="复制网址 https://platform.deepseek.com/"
                     >
-                      <ExternalLink size={15} aria-hidden="true" />
-                      打开 DeepSeek 平台
-                    </a>
+                      <code>https://platform.deepseek.com/</code>
+                      <span>{urlCopied ? "已复制" : "点击复制网址"}</span>
+                      <Copy size={16} aria-hidden="true" />
+                    </button>
+                    {urlCopyError && (
+                      <small className="deepseek-tutorial__copy-error">
+                        {urlCopyError}
+                      </small>
+                    )}
                   </div>
                 </div>
                 <TutorialImageCard
@@ -359,18 +327,10 @@ export function DeepSeekApiWizard({
                   <span>2</span>
                   <div>
                     <strong>
-                      点击左侧 “API Keys” → “创建”，复制那串 sk- 开头的密钥（只显示一次，务必保存）。
+                      点击左侧 “API Keys” → “创建”，复制那串 sk-
+                      开头的密钥（只显示一次，务必保存）。
                     </strong>
                     <p>如果提示余额不足，去 DeepSeek 充几块钱即可。</p>
-                    <a
-                      className="deepseek-wizard__external-link"
-                      href="https://platform.deepseek.com/usage"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ExternalLink size={15} aria-hidden="true" />
-                      打开充值和用量页面
-                    </a>
                   </div>
                 </div>
                 <div className="deepseek-tutorial__images">
@@ -422,11 +382,15 @@ export function DeepSeekApiWizard({
                   <span>3</span>
                   <div>
                     <strong>回到本软件，粘贴密钥，保存。</strong>
-                    <p>保存后会自动创建并选中一个名为“默认模型”的 DeepSeek 配置。</p>
+                    <p>
+                      保存后会自动创建并选中一个名为“默认模型”的 DeepSeek 配置。
+                    </p>
                   </div>
                 </div>
                 <div className="deepseek-tutorial__key-card">
-                  <label htmlFor="deepseek-api-key">在这里粘贴 DeepSeek API Key</label>
+                  <label htmlFor="deepseek-api-key">
+                    在这里粘贴 DeepSeek API Key
+                  </label>
                   <input
                     id="deepseek-api-key"
                     type="password"
@@ -440,7 +404,9 @@ export function DeepSeekApiWizard({
                       setApiKeyError("");
                     }}
                   />
-                  <span>密钥通常以 sk- 开头，只显示一次，请确认已经复制完整。</span>
+                  <span>
+                    密钥通常以 sk- 开头，只显示一次，请确认已经复制完整。
+                  </span>
                   {apiKeyError && (
                     <small className="deepseek-tutorial__key-error">
                       {apiKeyError}
@@ -448,27 +414,6 @@ export function DeepSeekApiWizard({
                   )}
                 </div>
               </section>
-
-              <div className="deepseek-wizard__config-preview">
-                <div>
-                  <span>名称</span>
-                  <strong>默认模型</strong>
-                </div>
-                <div>
-                  <span>API 地址</span>
-                  <code>{preset.baseUrl}</code>
-                </div>
-                <div>
-                  <span>推荐模型</span>
-                  <code>{preset.modelId}</code>
-                </div>
-              </div>
-              <div className="deepseek-wizard__security-note">
-                <ShieldCheck size={18} aria-hidden="true" />
-                <p>
-                  API Key 只用于保存到本机的受保护凭据中，不会显示在聊天内容里，也不会被回显。
-                </p>
-              </div>
             </div>
           )}
 
@@ -487,14 +432,11 @@ export function DeepSeekApiWizard({
                 </div>
               ) : (
                 <>
-                  <div className="deepseek-wizard__step-heading">
-                    <span className="deepseek-wizard__step-number">2</span>
-                    <div>
-                      <h3>测试连接</h3>
-                      <p>
-                        配置已经保存，但还没有调用模型。测试会发送一个最小请求。
-                      </p>
-                    </div>
+                  <div className="deepseek-test-intro">
+                    <strong>配置已经保存</strong>
+                    <p>
+                      点击下面的按钮，发送一条很短的请求确认 API Key 可以使用。
+                    </p>
                   </div>
                   {testResult && (
                     <div className="deepseek-wizard__result deepseek-wizard__result--error">
@@ -506,16 +448,23 @@ export function DeepSeekApiWizard({
                       </div>
                     </div>
                   )}
-                  <label className="deepseek-wizard__checkbox">
-                    <input
-                      type="checkbox"
-                      checked={costConfirmed}
-                      onChange={(event) =>
-                        setCostConfirmed(event.target.checked)
-                      }
-                    />
-                    <span>我知道测试可能产生少量 API 费用</span>
-                  </label>
+                  <div className="deepseek-test-consent">
+                    <label className="deepseek-test-consent__label">
+                      <input
+                        type="checkbox"
+                        checked={costConfirmed}
+                        onChange={(event) =>
+                          setCostConfirmed(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>我知道测试可能产生少量 API 费用</strong>
+                        <small>
+                          测试只发送一条很短的请求，不会执行项目文件操作。
+                        </small>
+                      </span>
+                    </label>
+                  </div>
                   <div className="deepseek-wizard__actions-card">
                     <Button
                       variant="ghost"

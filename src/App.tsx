@@ -857,33 +857,47 @@ export default function App() {
     onSettled: () => setModelDialogBusy(false),
   });
   const saveDeepSeekProfile = useCallback(
-    async (profile: ModelProfileInput, apiKey: string) => {
+    async (profile: ModelProfileInput, apiKey: string): Promise<boolean> => {
       setDeepSeekSaving(true);
       try {
+        const existing = profilesQuery.data?.profiles.find(
+          (item) =>
+            item.baseUrl === profile.baseUrl &&
+            item.modelId === profile.modelId &&
+            (item.providerName === "默认模型" ||
+              item.providerName === "DeepSeek"),
+        );
+        const profileToSave: ModelProfileInput = {
+          ...profile,
+          id: existing?.id,
+        };
         const next = await commands.saveModelProfileWithApiKey(
-          profile,
+          profileToSave,
           apiKey,
           profilesQuery.data?.revision ?? 0,
         );
         queryClient.setQueryData(["model-profiles"], next);
         const saved = next.profiles.find(
           (item) =>
-            item.providerName === profile.providerName &&
-            item.baseUrl === profile.baseUrl &&
-            item.modelId === profile.modelId &&
-            item.hasApiKey,
+            item.id === existing?.id ||
+            (item.providerName === profile.providerName &&
+              item.baseUrl === profile.baseUrl &&
+              item.modelId === profile.modelId &&
+              item.hasApiKey),
         );
         setDeepSeekProfileId(saved?.id ?? null);
         setDeepSeekTestResult(null);
         setOperationMessage("默认模型已保存，可以继续测试连接。");
         setLiveMessage("默认模型已保存。 ");
+        return true;
       } catch (error) {
         reportError(error);
+        return false;
       } finally {
         setDeepSeekSaving(false);
       }
     },
-    [profilesQuery.data?.revision, queryClient, reportError],
+    [profilesQuery.data, queryClient, reportError],
   );
 
   const deepSeekTestMutation = useMutation({
@@ -2374,7 +2388,7 @@ export default function App() {
         testing={deepSeekTestMutation.isPending}
         savedProfile={deepSeekProfile}
         testResult={deepSeekTestResult}
-        onSave={(profile, apiKey) => void saveDeepSeekProfile(profile, apiKey)}
+        onSave={(profile, apiKey) => saveDeepSeekProfile(profile, apiKey)}
         onTest={(profileId) => deepSeekTestMutation.mutate(profileId)}
         onOpenAdvanced={openAdvancedModelConfig}
         onClose={() => {
