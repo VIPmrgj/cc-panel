@@ -18,6 +18,7 @@ import type {
   ProjectMemoryInput,
   UpdateInfo,
   ConversationSummary,
+  ModelConnectionTestResult,
   CopyResult,
   EnhancePromptResponse,
   ModelProfileInput,
@@ -103,6 +104,10 @@ export const commands = {
     call<ModelProfileList | null>("prompt_and_save_model_profile", {
       profile,
       expectedRevision,
+    }),
+  testModelProfileConnection: (profileId: string) =>
+    call<ModelConnectionTestResult>("test_model_profile_connection", {
+      profileId,
     }),
   deleteModelProfile: (profileId: string, expectedRevision: number) =>
     call<ModelProfileList>("delete_model_profile", {

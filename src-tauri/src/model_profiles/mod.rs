@@ -3,7 +3,9 @@
 //! The caller supplies the target path (normally `~/.cc-panel/models.json`).
 //! Profile views are serializable for IPC, but secret-bearing types are not.
 
+mod connection;
 mod native_prompt;
+pub use connection::test_connection;
 mod protection;
 
 pub(crate) use native_prompt::prompt_api_key;

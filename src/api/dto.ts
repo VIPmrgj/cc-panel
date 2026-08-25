@@ -196,8 +196,18 @@ export interface ModelProfileInput {
   note?: string | null;
   websiteUrl?: string | null;
   baseUrl: string;
+
   modelId: string;
+
   selected: boolean;
+}
+
+export interface ModelConnectionTestResult {
+  ok: boolean;
+  code: string;
+  message: string;
+  providerName: string;
+  modelId: string;
 }
 
 export interface ModelProfileList {

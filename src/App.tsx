@@ -31,6 +31,7 @@ import type {
   ConversationSummary,
   ModelProfile,
   ModelProfileInput,
+  ModelConnectionTestResult,
   PendingSensitiveAttachment,
   PermissionRule,
   PermissionRuleRequest,
@@ -61,6 +62,7 @@ import { Button } from "./components/common/Button";
 import { Drawer } from "./components/common/Drawer";
 import { Notice } from "./components/common/Notice";
 import { SensitiveImportDialog } from "./components/common/SensitiveImportDialog";
+import { DeepSeekApiWizard } from "./components/onboarding/DeepSeekApiWizard";
 import { OnboardingDialog } from "./components/onboarding/OnboardingDialog";
 import { TaskPanel } from "./components/tasks/TaskPanel";
 import { RunCenter } from "./components/runtime/RunCenter";
@@ -202,6 +204,12 @@ export default function App() {
     false,
   );
   const [modelDialogBusy, setModelDialogBusy] = useState(false);
+  const [deepSeekWizardOpen, setDeepSeekWizardOpen] = useState(false);
+  const [deepSeekProfileId, setDeepSeekProfileId] = useState<string | null>(
+    null,
+  );
+  const [deepSeekTestResult, setDeepSeekTestResult] =
+    useState<ModelConnectionTestResult | null>(null);
   const [environmentReport, setEnvironmentReport] =
     useState<EnvironmentReport>();
   const [downloadedUpdate, setDownloadedUpdate] = useState<DownloadedUpdate>();
@@ -265,6 +273,9 @@ export default function App() {
   });
   const profiles = profilesQuery.data?.profiles ?? [];
   const selectedProfile = profiles.find((profile) => profile.selected) ?? null;
+  const deepSeekProfile = deepSeekProfileId
+    ? (profiles.find((profile) => profile.id === deepSeekProfileId) ?? null)
+    : null;
 
   const claudeOk = Boolean(bootstrap?.claudeCodeVersion);
   const projectOk = Boolean(bootstrap?.preferences.selectedProjectRoot);
@@ -844,6 +855,73 @@ export default function App() {
     onError: reportError,
     onSettled: () => setModelDialogBusy(false),
   });
+  const deepSeekSaveMutation = useMutation({
+    mutationFn: (profile: ModelProfileInput) =>
+      commands.promptAndSaveModelProfile(
+        profile,
+        profilesQuery.data?.revision ?? 0,
+      ),
+    onSuccess: (next, profile) => {
+      if (!next) {
+        setOperationMessage("已取消凭据输入，模型配置未保存。");
+        return;
+      }
+      queryClient.setQueryData(["model-profiles"], next);
+      const saved = next.profiles.find(
+        (item) =>
+          item.providerName === profile.providerName &&
+          item.baseUrl === profile.baseUrl &&
+          item.modelId === profile.modelId &&
+          item.hasApiKey,
+      );
+      setDeepSeekProfileId(saved?.id ?? null);
+      setDeepSeekTestResult(null);
+      setOperationMessage("DeepSeek 配置已保存，可以进行连接测试。");
+      setLiveMessage("DeepSeek 配置已保存。 ");
+    },
+    onError: reportError,
+  });
+
+  const deepSeekTestMutation = useMutation({
+    mutationFn: (profileId: string) =>
+      commands.testModelProfileConnection(profileId),
+    onSuccess: (result) => {
+      setDeepSeekTestResult(result);
+      setOperationMessage(result.message);
+      setLiveMessage(result.message);
+    },
+    onError: (error) => {
+      const code = apiErrorCode(error) ?? "MODEL_TEST_FAILED";
+      const message =
+        error instanceof Error ? error.message : "连接测试失败，请重试。";
+      setDeepSeekTestResult({
+        ok: false,
+        code,
+        message,
+        providerName: deepSeekProfile?.providerName ?? "DeepSeek",
+        modelId: deepSeekProfile?.modelId ?? "DeepSeek",
+      });
+      setOperationMessage(message);
+      setLiveMessage(message);
+    },
+  });
+
+  const openDeepSeekGuide = useCallback(() => {
+    setModelDialog(false);
+    setDeepSeekProfileId(null);
+    setDeepSeekTestResult(null);
+    setDeepSeekWizardOpen(true);
+  }, []);
+
+  const openAdvancedModelConfig = useCallback(
+    (profile?: ModelProfile | null) => {
+      setDeepSeekWizardOpen(false);
+      setDeepSeekProfileId(null);
+      setDeepSeekTestResult(null);
+      setModelDialog(profile ?? null);
+    },
+    [],
+  );
 
   const deleteProfileMutation = useMutation({
     mutationFn: (profileId: string) =>
@@ -2275,15 +2353,30 @@ export default function App() {
         ollamaSaving={ollamaMutation.isPending}
         onExperienceModeChange={handleExperienceModeChange}
         onInstallClaude={() => void installClaudeCode()}
-        onOpenModelConfig={openModelConfig}
+        onOpenModelConfig={openDeepSeekGuide}
         onRecheckClaude={() => void recheckClaudeSetup()}
         onSelectProject={() => rootsMutation.mutate("project")}
-        onAddModel={() => setModelDialog(null)}
+        onAddModel={openDeepSeekGuide}
         onSelectOllamaModel={(model) => ollamaMutation.mutate(model)}
 
         onClose={() => {
           persistOnboardingComplete();
           setOnboardingOpen(false);
+        }}
+      />
+      <DeepSeekApiWizard
+        open={deepSeekWizardOpen}
+        saving={deepSeekSaveMutation.isPending}
+        testing={deepSeekTestMutation.isPending}
+        savedProfile={deepSeekProfile}
+        testResult={deepSeekTestResult}
+        onSave={(profile) => deepSeekSaveMutation.mutate(profile)}
+        onTest={(profileId) => deepSeekTestMutation.mutate(profileId)}
+        onOpenAdvanced={openAdvancedModelConfig}
+        onClose={() => {
+          setDeepSeekWizardOpen(false);
+          setDeepSeekProfileId(null);
+          setDeepSeekTestResult(null);
         }}
       />
       {sensitiveQueue[0] && (

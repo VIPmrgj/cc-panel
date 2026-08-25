@@ -5249,6 +5249,266 @@ body {
   color: var(--success);
 }
 .setup-progress__heading > div {
+  .deepseek-wizard {
+    width: min(700px, calc(100vw - 32px));
+    max-height: min(780px, calc(100vh - 32px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--chat-text);
+  }
+  .deepseek-wizard__progress {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 20px;
+    border-bottom: 1px solid var(--chat-border);
+    color: var(--chat-muted);
+    font-size: 12px;
+  }
+  .deepseek-wizard__progress strong {
+    color: var(--chat-text);
+    font-size: 13px;
+  }
+  .deepseek-wizard__body {
+    min-height: 0;
+    overflow: auto;
+    padding: 22px 24px;
+  }
+  .deepseek-wizard__step {
+    display: grid;
+    gap: 16px;
+  }
+  .deepseek-wizard__hero,
+  .deepseek-wizard__step-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+  }
+  .deepseek-wizard__hero-icon,
+  .deepseek-wizard__step-number {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    color: var(--action-sky-hover);
+    background: var(--action-sky-soft);
+  }
+  .deepseek-wizard__step-number {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .deepseek-wizard h3 {
+    margin: 0;
+    color: var(--chat-text);
+    font-size: 17px;
+    line-height: 1.35;
+  }
+  .deepseek-wizard p {
+    margin: 5px 0 0;
+    color: var(--chat-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .deepseek-wizard__info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .deepseek-wizard__info-grid > div,
+  .deepseek-wizard__actions-card,
+  .deepseek-wizard__config-preview,
+  .deepseek-wizard__result {
+    border: 1px solid var(--chat-border);
+    border-radius: 10px;
+    background: var(--chat-surface-raised);
+  }
+  .deepseek-wizard__info-grid > div {
+    display: grid;
+    gap: 6px;
+    padding: 13px;
+  }
+  .deepseek-wizard__info-grid strong,
+  .deepseek-wizard__config-preview span {
+    color: var(--chat-text);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .deepseek-wizard__info-grid span,
+  .deepseek-wizard__config-preview code {
+    color: var(--chat-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .deepseek-wizard__actions-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px;
+  }
+  .deepseek-wizard__actions-card p {
+    margin: 0;
+    font-size: 12px;
+  }
+  .deepseek-wizard__actions-card .button {
+    flex: 0 0 auto;
+  }
+  .deepseek-wizard__checklist {
+    display: grid;
+    gap: 11px;
+    margin: 0;
+    padding: 0 0 0 25px;
+    color: var(--chat-text);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .deepseek-wizard__external-link {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 7px;
+    color: var(--action-sky-hover);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .deepseek-wizard__external-link:hover {
+    text-decoration: underline;
+  }
+  .deepseek-wizard__checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    color: var(--chat-text);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .deepseek-wizard__checkbox input {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    margin: 1px 0 0;
+    accent-color: var(--action-sky);
+  }
+  .deepseek-wizard__config-preview {
+    display: grid;
+    gap: 11px;
+    padding: 14px;
+  }
+  .deepseek-wizard__config-preview > div {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+  }
+  .deepseek-wizard__config-preview code {
+    overflow-wrap: anywhere;
+    color: var(--chat-text);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  .deepseek-wizard__security-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--success) 38%, var(--chat-border));
+    border-radius: 10px;
+    background: color-mix(
+      in srgb,
+      var(--success) 8%,
+      var(--chat-surface-raised)
+    );
+  }
+  .deepseek-wizard__security-note > svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: var(--success);
+  }
+  .deepseek-wizard__security-note p {
+    margin: 0;
+    font-size: 12px;
+  }
+  .deepseek-wizard__result {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 17px;
+  }
+  .deepseek-wizard__result > svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+  }
+  .deepseek-wizard__result--success {
+    border-color: color-mix(in srgb, var(--success) 48%, var(--chat-border));
+  }
+  .deepseek-wizard__result--success > svg {
+    color: var(--success);
+  }
+  .deepseek-wizard__result--error {
+    border-color: color-mix(in srgb, var(--danger) 48%, var(--chat-border));
+  }
+  .deepseek-wizard__result--error > svg {
+    color: var(--danger);
+  }
+  .deepseek-wizard__result h3 {
+    font-size: 15px;
+  }
+  .deepseek-wizard__result small {
+    display: block;
+    margin-top: 8px;
+    color: var(--chat-muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .deepseek-wizard__footer {
+    flex: 0 0 auto;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .deepseek-wizard__footer-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .deepseek-wizard__error {
+    color: var(--danger) !important;
+  }
+  @media (max-width: 620px) {
+    .deepseek-wizard {
+      width: calc(100vw - 20px);
+      max-height: calc(100vh - 20px);
+    }
+    .deepseek-wizard__body {
+      padding: 18px 15px;
+    }
+    .deepseek-wizard__info-grid {
+      grid-template-columns: 1fr;
+    }
+    .deepseek-wizard__actions-card {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .deepseek-wizard__actions-card .button {
+      width: 100%;
+    }
+    .deepseek-wizard__config-preview > div {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+    .deepseek-wizard__footer {
+      align-items: stretch;
+      gap: 10px;
+    }
+    .deepseek-wizard__footer-actions {
+      justify-content: flex-end;
+    }
+  }
   min-width: 0;
   display: grid;
   gap: 2px;

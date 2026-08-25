@@ -8,6 +8,15 @@ pub struct RootEntry {
     pub label: String,
     pub kind: RootKind,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelConnectionTestResult {
+    pub ok: bool,
+    pub code: String,
+    pub message: String,
+    pub provider_name: String,
+    pub model_id: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

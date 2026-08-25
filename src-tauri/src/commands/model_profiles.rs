@@ -1,14 +1,22 @@
 use tauri::State;
 
 use crate::{
-    dto::{ApiError, ApiResult},
-    model_profiles::{prompt_api_key, ModelProfileInput, ModelProfilesView},
+    dto::{ApiError, ApiResult, ModelConnectionTestResult},
+    model_profiles::{prompt_api_key, test_connection, ModelProfileInput, ModelProfilesView},
     state::AppState,
 };
 
 #[tauri::command]
 pub fn list_model_profiles(state: State<'_, AppState>) -> ApiResult<ModelProfilesView> {
     state.model_profiles.list()
+}
+#[tauri::command]
+pub async fn test_model_profile_connection(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> ApiResult<ModelConnectionTestResult> {
+    let secret = state.model_profiles.resolve_secret(&profile_id)?;
+    test_connection(secret).await
 }
 
 #[tauri::command]

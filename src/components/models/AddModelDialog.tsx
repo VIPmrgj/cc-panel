@@ -211,7 +211,9 @@ export function AddModelDialog({
               error={errors.modelId}
               help={
                 providerName === "DeepSeek"
-                  ? "DeepSeek 官方 Anthropic 兼容模型：deepseek-v4-flash（可加 [1M] 后缀启用 1M 上下文）。"
+                  ? "DeepSeek 官方 Anthropic 兼容模型：" +
+                    (preset?.modelId ?? "请以官方文档为准") +
+                    "。"
                   : preset
                     ? `默认 ${preset.modelId}，可按账号权限修改。${preset.note ? ` ${preset.note}` : ""}`
                     : undefined
