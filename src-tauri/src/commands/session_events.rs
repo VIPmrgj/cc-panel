@@ -29,6 +29,7 @@ pub(super) fn normalize_session_event(event: &SessionEvent) -> ClaudeRunEnvelope
             code: "WATCHDOG_TIMEOUT".into(),
             message: "Claude 会话超过 30 分钟未完成，已停止。".into(),
             retryable: true,
+            request_id: None,
         },
         SessionEventPayload::Exited { code } => ClaudeRunEvent::Lifecycle {
             status: if code.is_some_and(|value| value == 0) {
@@ -39,10 +40,15 @@ pub(super) fn normalize_session_event(event: &SessionEvent) -> ClaudeRunEnvelope
             .into(),
             message: None,
         },
-        SessionEventPayload::Error { code, retryable } => ClaudeRunEvent::Error {
+        SessionEventPayload::Error {
+            code,
+            retryable,
+            request_id,
+        } => ClaudeRunEvent::Error {
             code: error_code(code).into(),
             message: error_message(code).into(),
             retryable: *retryable,
+            request_id: request_id.clone(),
         },
     };
     ClaudeRunEnvelope {

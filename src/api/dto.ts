@@ -402,7 +402,13 @@ export type ClaudeRunEvent =
       durationMs?: number | null;
       numTurns?: number | null;
     }
-  | { type: "error"; code: string; message: string; retryable: boolean }
+  | {
+      type: "error";
+      code: string;
+      message: string;
+      retryable: boolean;
+      requestId?: string | null;
+    }
   | { type: "unknown"; rawType: string };
 
 export interface ClaudeRunEnvelope {

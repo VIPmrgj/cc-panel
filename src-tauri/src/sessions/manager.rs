@@ -116,6 +116,8 @@ pub enum SessionEventPayload {
     Error {
         code: SessionErrorCode,
         retryable: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
 }
 
@@ -950,9 +952,18 @@ async fn run_session(
                             continue;
                         };
                         if pending.deadline <= Instant::now() {
-                            pending_permissions.insert(request_id, pending);
+                            pending_permissions.insert(request_id.clone(), pending);
                             let _ = reply.send(Err(SessionError::PermissionExpired));
-                            emit_error(&events, &mut sequence, run_id, &session_id, SessionErrorCode::PermissionExpired, true).await;
+                            emit_error_for_request(
+                                &events,
+                                &mut sequence,
+                                run_id,
+                                &session_id,
+                                SessionErrorCode::PermissionExpired,
+                                true,
+                                request_id,
+                            )
+                            .await;
                             continue;
                         }
                         let interrupted = matches!(
@@ -1307,11 +1318,37 @@ async fn emit_error(
         sequence,
         run_id,
         session_id,
-        SessionEventPayload::Error { code, retryable },
+        SessionEventPayload::Error {
+            code,
+            retryable,
+            request_id: None,
+        },
     )
     .await;
 }
 
+async fn emit_error_for_request(
+    events: &EventLanesTx,
+    sequence: &mut u64,
+    run_id: Uuid,
+    session_id: &Arc<RwLock<String>>,
+    code: SessionErrorCode,
+    retryable: bool,
+    request_id: String,
+) {
+    emit(
+        events,
+        sequence,
+        run_id,
+        session_id,
+        SessionEventPayload::Error {
+            code,
+            retryable,
+            request_id: Some(request_id),
+        },
+    )
+    .await;
+}
 async fn read_stdout<R: AsyncRead + Unpin>(mut reader: R, sender: mpsc::Sender<ReaderMessage>) {
     let mut pending = Vec::new();
     let mut total = 0_usize;
@@ -1707,6 +1744,7 @@ mod tests {
             payload: SessionEventPayload::Error {
                 code: SessionErrorCode::OutputTooLarge,
                 retryable: false,
+                request_id: None,
             },
         };
         let value = serde_json::to_value(event).unwrap();

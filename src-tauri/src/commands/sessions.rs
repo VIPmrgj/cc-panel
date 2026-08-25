@@ -290,6 +290,8 @@ pub enum ClaudeRunEvent {
         code: String,
         message: String,
         retryable: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     Unknown {
         raw_type: String,

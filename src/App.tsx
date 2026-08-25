@@ -231,7 +231,7 @@ export default function App() {
   const sendInFlightRef = useRef(false);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const lastCompositionRef = useRef<CompositionRequest | null>(null);
-  const pendingPermissionRef = useRef<string | null>(null);
+  const pendingPermissionRef = useRef<Set<string>>(new Set());
   const autoRecoveryAttemptRef = useRef<string | null>(null);
   const sessionPermissionRulesRef = useRef<Record<string, PermissionRule[]>>(
     {},
@@ -1805,17 +1805,21 @@ export default function App() {
       const current = chatRef.current;
       const sessionId = current.sessionId;
       const runId = current.runId;
-      const pending = current.pendingPermission;
+      const pending = current.messages.find(
+        (message) =>
+          message.role === "permission" &&
+          message.requestId === requestId &&
+          message.status === "pending",
+      );
       if (
         !sessionId ||
         !runId ||
         !pending ||
-        pending.requestId !== requestId ||
-        pendingPermissionRef.current === requestId
+        pendingPermissionRef.current.has(requestId)
       )
         return;
 
-      pendingPermissionRef.current = requestId;
+      pendingPermissionRef.current.add(requestId);
       setPermissionBusy(true);
       const rule = permissionRuleFor(pending);
       const transportBehavior =
@@ -1870,10 +1874,8 @@ export default function App() {
         });
         reportError(error);
       } finally {
-        if (pendingPermissionRef.current === requestId) {
-          pendingPermissionRef.current = null;
-        }
-        setPermissionBusy(false);
+        pendingPermissionRef.current.delete(requestId);
+        setPermissionBusy(pendingPermissionRef.current.size > 0);
       }
     },
     [queryClient, reportError],
@@ -1882,15 +1884,21 @@ export default function App() {
   const retryPermission = useCallback(
     async (requestId: string) => {
       const current = chatRef.current;
+      const pending = current.messages.find(
+        (message) =>
+          message.role === "permission" &&
+          message.requestId === requestId &&
+          message.status === "pending",
+      );
       if (
         !current.sessionId ||
         !current.runId ||
-        current.pendingPermission?.requestId !== requestId ||
-        pendingPermissionRef.current
+        !pending ||
+        pendingPermissionRef.current.has(requestId)
       ) {
         return;
       }
-      pendingPermissionRef.current = requestId;
+      pendingPermissionRef.current.add(requestId);
       setPermissionBusy(true);
       try {
         await commands.retryPermission(
@@ -1909,10 +1917,8 @@ export default function App() {
       } catch (error) {
         reportError(error);
       } finally {
-        if (pendingPermissionRef.current === requestId) {
-          pendingPermissionRef.current = null;
-        }
-        setPermissionBusy(false);
+        pendingPermissionRef.current.delete(requestId);
+        setPermissionBusy(pendingPermissionRef.current.size > 0);
       }
     },
     [reportError],

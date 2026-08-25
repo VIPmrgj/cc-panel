@@ -201,6 +201,50 @@ describe("chatReducer", () => {
     });
   });
 
+  it("removes stale thinking-only bubbles when a new phase starts", () => {
+    let state = chatReducer(initialChatState, {
+      type: "reset",
+      sessionId: "session-1",
+      runId: "run-1",
+    });
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(1, {
+        type: "stream",
+        messageId: "thinking-1",
+        deltaType: "thinking",
+        delta: "先检查文件",
+      }),
+    });
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(2, {
+        type: "stream",
+        messageId: "thinking-2",
+        deltaType: "thinking",
+        delta: "再执行操作",
+      }),
+    });
+    expect(state.messages.map((message) => message.id)).toEqual(["thinking-2"]);
+
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(3, {
+        type: "stream",
+        messageId: "answer-1",
+        deltaType: "text",
+        delta: "完成",
+      }),
+    });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      id: "answer-1",
+      content: "完成",
+    });
+    expect(state.messages[0].blocks ?? []).not.toContainEqual(
+      expect.objectContaining({ type: "thinking" }),
+    );
+  });
   it("does not reset accepted events when session startup resolves", () => {
     let streamed = chatReducer(initialChatState, {
       type: "reset",
@@ -291,6 +335,7 @@ describe("chatReducer", () => {
         type: "permission",
         requestId: "request-1",
         toolUseId: "tool-1",
+        expiresAt: Date.now() + 120_000,
         toolName: "Bash",
         input: { command: "first" },
       }),
@@ -301,11 +346,17 @@ describe("chatReducer", () => {
         type: "permission",
         requestId: "request-2",
         toolUseId: "tool-2",
+        expiresAt: Date.now() + 120_000,
         toolName: "Bash",
         input: { command: "second" },
       }),
     });
-    expect(state.pendingPermission?.requestId).toBe("request-2");
+    expect(state.pendingPermission?.requestId).toBe("request-1");
+    expect(
+      state.messages
+        .filter((message) => message.role === "permission")
+        .every((message) => (message.permissionExpiresAt ?? 0) > Date.now()),
+    ).toBe(true);
 
     state = chatReducer(state, {
       type: "permission-response",
@@ -339,6 +390,7 @@ describe("chatReducer", () => {
         type: "permission",
         requestId: "request-1",
         toolUseId: "tool-1",
+        expiresAt: Date.now() + 120_000,
         toolName: "Bash",
         input: { command: "npm test" },
       }),
@@ -599,6 +651,48 @@ describe("chatReducer", () => {
       envelope: envelope(3, { type: "result", success: true, isError: false }),
     });
     expect(state.activeTool).toBeNull();
+  });
+  it("associates a permission expiry error with its request", () => {
+    let state = chatReducer(initialChatState, {
+      type: "reset",
+      sessionId: "session-1",
+      runId: "run-1",
+    });
+    for (const [sequence, requestId] of [
+      [1, "request-1"],
+      [2, "request-2"],
+    ] as const) {
+      state = chatReducer(state, {
+        type: "envelope",
+        envelope: envelope(sequence, {
+          type: "permission",
+          requestId,
+          toolName: "Bash",
+          input: { command: requestId },
+          expiresAt: Date.now() + 120_000,
+        }),
+      });
+    }
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(3, {
+        type: "error",
+        code: "PERMISSION_EXPIRED",
+        message: "权限确认已失效",
+        retryable: true,
+        requestId: "request-2",
+      }),
+    });
+
+    expect(
+      state.messages.find((message) => message.requestId === "request-1")
+        ?.permissionExpiresAt,
+    ).toBeGreaterThan(Date.now());
+    expect(
+      state.messages.find((message) => message.requestId === "request-2")
+        ?.permissionExpiresAt,
+    ).toBe(0);
+    expect(state.pendingPermission?.requestId).toBe("request-1");
   });
   it("keeps an expired permission actionable until it is retried", () => {
     let state = chatReducer(initialChatState, {

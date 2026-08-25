@@ -296,8 +296,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
   if (action.type === "permission-response") {
     if (!matchesScope(state, action.sessionId, action.runId)) return state;
-    const pending = state.pendingPermission;
-    if (!pending || pending.requestId !== action.requestId) return state;
+    const pending = state.messages.find(
+      (message) =>
+        message.role === "permission" &&
+        message.requestId === action.requestId &&
+        message.status === "pending",
+    );
+    if (!pending) return state;
     const messages = state.messages.map((message) =>
       message.id === pending.id
         ? { ...message, status: "complete" as const }
@@ -337,12 +342,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       permissionExpiresAt:
         action.code === "PERMISSION_EXPIRED" ? 0 : resolved.permissionExpiresAt,
     };
+    const messages = appendOrReplace(state.messages, restored);
     return {
       ...state,
       interruptionRequested: false,
       turnStatus: "awaiting-permission",
-      pendingPermission: restored,
-      messages: appendOrReplace(state.messages, restored),
+      pendingPermission: findPendingPermission(messages),
+      messages,
     };
   }
 
@@ -496,55 +502,67 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
         status: "complete",
       };
       const promoted = promoteActiveAssistant(state, event.messageId, message);
+      const messages = isThinkingOnlyAssistant(message)
+        ? removeStaleThinkingMessages(promoted, message.id)
+        : settleThinkingMessages(promoted);
       return {
         ...state,
         activeAssistantId: null,
-        messages: promoted,
+        messages,
       };
     }
     case "stream":
       return reduceStream(state, event);
-    case "tool-use":
-      return upsertBlock(state, event.toolUseId, {
+    case "tool-use": {
+      const next = upsertBlock(state, event.toolUseId, {
         type: "tool-use",
         toolUseId: event.toolUseId,
         toolName: event.toolName,
         input: event.input,
       });
+      return { ...next, messages: settleThinkingMessages(next.messages) };
+    }
     case "tool-progress":
       return reduceToolProgress(state, event);
-    case "tool-result":
+    case "tool-result": {
+      const next = upsertBlock(state, event.toolUseId, {
+        type: "tool-result",
+        toolUseId: event.toolUseId,
+        content: event.content,
+        isError: event.isError,
+      });
       return {
-        ...upsertBlock(state, event.toolUseId, {
-          type: "tool-result",
-          toolUseId: event.toolUseId,
-          content: event.content,
-          isError: event.isError,
-        }),
+        ...next,
         activeTool:
           state.activeTool?.toolUseId === event.toolUseId
             ? null
             : state.activeTool,
+        messages: settleThinkingMessages(next.messages),
       };
+    }
     case "permission": {
       const existing = state.messages.find(
         (message) => message.requestId === event.requestId,
       );
       if (existing && existing.status !== "pending") return state;
       const permission: ChatMessage = {
-        id: `permission-${event.requestId}`,
+        id: "permission-" + event.requestId,
         role: "permission",
         content: "",
         requestId: event.requestId,
         toolName: event.toolName ?? null,
         toolInput: event.input,
+        permissionExpiresAt: event.expiresAt ?? null,
         status: "pending",
       };
+      const messages = settleThinkingMessages(
+        appendOrReplace(state.messages, permission),
+      );
       return {
         ...state,
         turnStatus: "awaiting-permission",
-        pendingPermission: permission,
-        messages: appendOrReplace(state.messages, permission),
+        pendingPermission: findPendingPermission(messages),
+        messages,
       };
     }
     case "compaction":
@@ -564,24 +582,37 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
         activeAssistantId: null,
         activeTool: null,
         pendingPermission: null,
-        messages: finalizeRunningAssistants(
-          resolvePendingPermissions(state.messages),
+        messages: settleThinkingMessages(
+          finalizeRunningAssistants(resolvePendingPermissions(state.messages)),
         ),
       };
     case "error": {
-      if (event.code === "PERMISSION_EXPIRED" && state.pendingPermission) {
-        const expired = {
-          ...state.pendingPermission,
-          status: "pending" as const,
-          permissionExpiresAt: 0,
-        };
-        return {
-          ...state,
-          statusMessage: event.message,
-          turnStatus: "awaiting-permission",
-          pendingPermission: expired,
-          messages: appendOrReplace(state.messages, expired),
-        };
+      if (event.code === "PERMISSION_EXPIRED") {
+        const expiredSource = event.requestId
+          ? state.messages.find(
+              (message) =>
+                message.role === "permission" &&
+                message.requestId === event.requestId &&
+                message.status === "pending",
+            )
+          : state.pendingPermission;
+        if (expiredSource) {
+          const expired = {
+            ...expiredSource,
+            status: "pending" as const,
+            permissionExpiresAt: 0,
+          };
+          const messages = settleThinkingMessages(
+            appendOrReplace(state.messages, expired),
+          );
+          return {
+            ...state,
+            statusMessage: event.message,
+            turnStatus: "awaiting-permission",
+            pendingPermission: findPendingPermission(messages),
+            messages,
+          };
+        }
       }
       if (state.interruptionRequested && state.lifecycle === "interrupted") {
         return {
@@ -601,7 +632,11 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
         activeTool: null,
         pendingPermission: null,
         messages: appendOrReplace(
-          finalizeRunningAssistants(resolvePendingPermissions(state.messages)),
+          settleThinkingMessages(
+            finalizeRunningAssistants(
+              resolvePendingPermissions(state.messages),
+            ),
+          ),
           {
             id:
               "error-" + (state.runId ?? "session") + "-" + state.lastSequence,
@@ -656,10 +691,14 @@ function reduceStream(
     requestedId !== state.activeAssistantId
       ? replaceId(state.messages, state.activeAssistantId, next)
       : appendOrReplace(state.messages, next);
+  const visibleMessages =
+    event.deltaType === "thinking"
+      ? removeStaleThinkingMessages(messages, id)
+      : settleThinkingMessages(messages);
   return {
     ...state,
     activeAssistantId: id,
-    messages,
+    messages: visibleMessages,
   };
 }
 
@@ -745,6 +784,39 @@ function replaceId(
   return next;
 }
 
+function isThinkingOnlyAssistant(message: ChatMessage) {
+  return (
+    message.role === "assistant" &&
+    !message.content.trim() &&
+    (message.blocks?.length ?? 0) > 0 &&
+    message.blocks?.every((block) => block.type === "thinking") === true
+  );
+}
+
+function removeStaleThinkingMessages(
+  messages: ChatMessage[],
+  keepId: string,
+): ChatMessage[] {
+  return messages.filter(
+    (message) => message.id === keepId || !isThinkingOnlyAssistant(message),
+  );
+}
+
+function settleThinkingMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role !== "assistant") return [message];
+    const visibleBlocks = (message.blocks ?? []).filter(
+      (block) => block.type !== "thinking",
+    );
+    if (!message.content.trim() && visibleBlocks.length === 0) {
+      return message.status === "running" ? [message] : [];
+    }
+    if (visibleBlocks.length === (message.blocks?.length ?? 0)) {
+      return [message];
+    }
+    return [{ ...message, blocks: visibleBlocks }];
+  });
+}
 /**
  * When a turn ends, any assistant message still streaming (`status: "running"`)
  * must be finalized: non-empty ones become complete, empty placeholders are
