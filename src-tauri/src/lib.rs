@@ -87,6 +87,7 @@ pub fn run() {
             commands::list_model_profiles,
             commands::save_model_profile,
             commands::prompt_and_save_model_profile,
+            commands::save_model_profile_with_api_key,
             commands::test_model_profile_connection,
             commands::delete_model_profile,
             commands::select_model_profile,

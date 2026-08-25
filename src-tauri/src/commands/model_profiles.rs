@@ -73,6 +73,21 @@ pub async fn prompt_and_save_model_profile(
         .map(Some)
 }
 
+/// Saves a key supplied explicitly by the onboarding password field. The key
+/// is passed only to the protected storage path and is never logged or
+/// returned to the renderer.
+#[tauri::command]
+pub fn save_model_profile_with_api_key(
+    profile: ModelProfileInput,
+    api_key: String,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> ApiResult<ModelProfilesView> {
+    state
+        .model_profiles
+        .save_with_api_key(profile, api_key, expected_revision)
+}
+
 #[tauri::command]
 pub fn delete_model_profile(
     profile_id: String,

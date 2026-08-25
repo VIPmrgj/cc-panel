@@ -5509,6 +5509,90 @@ body {
       justify-content: flex-end;
     }
   }
+  .deepseek-wizard__eyebrow {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--action-sky-hover);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .deepseek-wizard__plain-card {
+    display: grid;
+    gap: 5px;
+    padding: 14px;
+    border: 1px solid
+      color-mix(in srgb, var(--action-sky) 35%, var(--chat-border));
+    border-radius: 10px;
+    background: color-mix(
+      in srgb,
+      var(--action-sky) 7%,
+      var(--chat-surface-raised)
+    );
+  }
+  .deepseek-wizard__plain-card strong,
+  .deepseek-wizard__flow-preview-title {
+    color: var(--chat-text);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .deepseek-wizard__plain-card p {
+    margin: 0;
+    color: var(--chat-muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .deepseek-wizard__flow-preview {
+    display: grid;
+    gap: 11px;
+    padding: 14px;
+    border: 1px solid var(--chat-border);
+    border-radius: 10px;
+    background: var(--chat-surface-raised);
+  }
+  .deepseek-wizard__flow-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .deepseek-wizard__flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+  .deepseek-wizard__flow-step > span {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    border-radius: 50%;
+    color: var(--action-sky-hover);
+    background: var(--action-sky-soft);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .deepseek-wizard__flow-step > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .deepseek-wizard__flow-step strong {
+    color: var(--chat-text);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .deepseek-wizard__flow-step small {
+    color: var(--chat-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  @media (max-width: 620px) {
+    .deepseek-wizard__flow-steps {
+      grid-template-columns: 1fr;
+    }
+  }
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -5595,3 +5679,182 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+  .deepseek-tutorial {
+    gap: 18px;
+  }
+  .deepseek-tutorial__section {
+    display: grid;
+    gap: 12px;
+    padding: 15px;
+    border: 1px solid var(--chat-border);
+    border-radius: 12px;
+    background: var(--chat-surface-raised);
+  }
+  .deepseek-tutorial__section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .deepseek-tutorial__section-heading > span {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    border-radius: 50%;
+    color: var(--action-sky-hover);
+    background: var(--action-sky-soft);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .deepseek-tutorial__section-heading > div {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .deepseek-tutorial__section-heading strong {
+    color: var(--chat-text);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .deepseek-tutorial__section-heading p {
+    margin: 0;
+    font-size: 12px;
+  }
+  .deepseek-tutorial__images {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .deepseek-tutorial-image {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+  }
+  .deepseek-tutorial-image__button {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--chat-border);
+    border-radius: 9px;
+    background: var(--chat-surface);
+    cursor: zoom-in;
+  }
+  .deepseek-tutorial-image__button:hover {
+    border-color: var(--action-sky);
+    box-shadow: 0 0 0 3px var(--action-sky-soft);
+  }
+  .deepseek-tutorial-image__button img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+  }
+  .deepseek-tutorial-image figcaption {
+    color: var(--chat-muted);
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: center;
+  }
+  .deepseek-tutorial__key-card {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid
+      color-mix(in srgb, var(--action-sky) 40%, var(--chat-border));
+    border-radius: 10px;
+    background: color-mix(
+      in srgb,
+      var(--action-sky) 6%,
+      var(--chat-surface-raised)
+    );
+  }
+  .deepseek-tutorial__key-card label {
+    color: var(--chat-text);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .deepseek-tutorial__key-card input {
+    width: 100%;
+    min-height: 40px;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    border: 1px solid var(--chat-border);
+    border-radius: 8px;
+    color: var(--chat-text);
+    background: var(--chat-surface);
+    font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  .deepseek-tutorial__key-card input:focus {
+    outline: 2px solid var(--action-sky);
+    outline-offset: 1px;
+  }
+  .deepseek-tutorial__key-card > span {
+    color: var(--chat-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .deepseek-tutorial__key-error {
+    color: var(--danger);
+    font-size: 12px;
+  }
+  .deepseek-image-lightbox {
+    position: fixed;
+    z-index: 20;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: color-mix(in srgb, var(--chat-text) 72%, transparent);
+  }
+  .deepseek-image-lightbox__panel {
+    position: relative;
+    display: grid;
+    gap: 10px;
+    width: min(920px, 94vw);
+    max-height: 92vh;
+    padding: 14px;
+    border: 1px solid var(--chat-border);
+    border-radius: 13px;
+    background: var(--chat-surface-raised);
+    box-shadow: var(--shadow-modal);
+  }
+  .deepseek-image-lightbox__panel img {
+    display: block;
+    max-width: 100%;
+    max-height: 78vh;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+  .deepseek-image-lightbox__panel p {
+    margin: 0;
+    color: var(--chat-muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  .deepseek-image-lightbox__close {
+    position: absolute;
+    z-index: 1;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--chat-border);
+    border-radius: 50%;
+    color: var(--chat-text);
+    background: var(--chat-surface-raised);
+    cursor: pointer;
+  }
+  .deepseek-image-lightbox__close:hover {
+    color: var(--action-sky-hover);
+    border-color: var(--action-sky);
+  }
+  @media (max-width: 620px) {
+    .deepseek-tutorial__images {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }

@@ -16,6 +16,12 @@ import type {
 } from "../../api/dto";
 import { Button } from "../common/Button";
 import { presetFor } from "../models/providerCatalog";
+import loginImage from "../../assets/onboarding/deepseek/登录界面.png";
+import homeImage from "../../assets/onboarding/deepseek/主页.png";
+import rechargeImage from "../../assets/onboarding/deepseek/去充值.png";
+import apiKeyImage from "../../assets/onboarding/deepseek/api key.png";
+import apiNameImage from "../../assets/onboarding/deepseek/api名称.png";
+import copyApiKeyImage from "../../assets/onboarding/deepseek/复制api key.png";
 
 interface Props {
   open: boolean;
@@ -23,7 +29,7 @@ interface Props {
   testing?: boolean;
   savedProfile?: ModelProfile | null;
   testResult?: ModelConnectionTestResult | null;
-  onSave: (profile: ModelProfileInput) => void;
+  onSave: (profile: ModelProfileInput, apiKey: string) => void;
   onTest: (profileId: string) => void;
   onOpenAdvanced: (profile?: ModelProfile | null) => void;
   onClose: () => void;
@@ -31,6 +37,35 @@ interface Props {
 
 const focusableSelector =
   'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+type TutorialImage = {
+  src: string;
+  alt: string;
+  title: string;
+};
+
+function TutorialImageCard({
+  image,
+  onOpen,
+}: {
+  image: TutorialImage;
+  onOpen: (image: TutorialImage) => void;
+}) {
+  return (
+    <figure className="deepseek-tutorial-image">
+      <button
+        type="button"
+        className="deepseek-tutorial-image__button"
+        onClick={() => onOpen(image)}
+        onDoubleClick={() => onOpen(image)}
+        aria-label={`放大查看：${image.title}`}
+      >
+        <img src={image.src} alt={image.alt} />
+      </button>
+      <figcaption>{image.title}（点击或双击放大）</figcaption>
+    </figure>
+  );
+}
 
 export function DeepSeekApiWizard({
   open,
@@ -48,17 +83,23 @@ export function DeepSeekApiWizard({
   const panelRef = useRef<HTMLElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
+  const busyRef = useRef(false);
   const [step, setStep] = useState(0);
-  const [hasCopiedKey, setHasCopiedKey] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyError, setApiKeyError] = useState("");
+  const [previewImage, setPreviewImage] = useState<TutorialImage | null>(null);
   const [costConfirmed, setCostConfirmed] = useState(false);
   const preset = presetFor("DeepSeek");
 
   closeRef.current = onClose;
+  busyRef.current = saving || testing;
 
   useEffect(() => {
     if (!open) return;
-    setStep(savedProfile ? 3 : 0);
-    setHasCopiedKey(false);
+    setStep(savedProfile ? 2 : 0);
+    setApiKey("");
+    setApiKeyError("");
+    setPreviewImage(null);
     setCostConfirmed(false);
     previousFocus.current = document.activeElement as HTMLElement;
     const panel = panelRef.current;
@@ -76,7 +117,7 @@ export function DeepSeekApiWizard({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!panel) return;
-      if (event.key === "Escape" && !saving && !testing) {
+      if (event.key === "Escape" && !busyRef.current) {
         event.preventDefault();
         closeRef.current();
         return;
@@ -104,7 +145,7 @@ export function DeepSeekApiWizard({
       });
       previousFocus.current?.focus();
     };
-  }, [open, savedProfile, saving, testing]);
+  }, [open, savedProfile]);
 
   if (!open) return null;
 
@@ -128,8 +169,8 @@ export function DeepSeekApiWizard({
   }
 
   const saveProfile: ModelProfileInput = {
-    providerName: preset.value,
-    note: "通过 DeepSeek 新手引导配置",
+    providerName: "默认模型",
+    note: "DeepSeek",
     websiteUrl: "https://platform.deepseek.com/",
     baseUrl: preset.baseUrl,
     modelId: preset.modelId,
@@ -137,7 +178,21 @@ export function DeepSeekApiWizard({
   };
 
   const canTest = Boolean(savedProfile && costConfirmed && !testing);
-  const progressLabel = "第 " + (step + 1) + " 步，共 4 步";
+  const progressLabel = "第 " + (step + 1) + " 步，共 3 步";
+  const submitApiKey = () => {
+    const normalizedKey = apiKey.trim();
+    if (!normalizedKey) {
+      setApiKeyError("请先粘贴 DeepSeek API Key。");
+      return;
+    }
+    if (!normalizedKey.startsWith("sk-")) {
+      setApiKeyError("API Key 通常以 sk- 开头，请检查是否复制完整。");
+      return;
+    }
+    setApiKeyError("");
+    onSave(saveProfile, normalizedKey);
+    setApiKey("");
+  };
 
   return (
     <div className="modal-backdrop">
@@ -175,7 +230,7 @@ export function DeepSeekApiWizard({
         <div className="deepseek-wizard__progress" aria-live="polite">
           <span>{progressLabel}</span>
           <strong>
-            {["了解流程", "申请 API Key", "安全保存", "测试连接"][step]}
+            {["了解流程", "三步拿到“加油卡”", "测试连接"][step]}
           </strong>
         </div>
 
@@ -187,29 +242,68 @@ export function DeepSeekApiWizard({
                   <KeyRound size={25} />
                 </span>
                 <div>
-                  <h3>先用一个例子学会接入模型</h3>
+                  <span className="deepseek-wizard__eyebrow">
+                    第 1 步 · 先认识 API
+                  </span>
+                  <h3>为什么需要 API Key？——就像给汽车加油</h3>
                   <p>
-                    API Key 可以理解成模型服务的密码。CC Panel
-                    不会读取你的账号密码，只会指导你创建密钥并安全保存。
+                    本软件就像一辆好用的汽车，但车要跑起来，得有汽油。AI
+                    模型就是“汽油”，而{" "}
+                    <strong>API Key 就是你自己的加油卡</strong>。
+                  </p>
+                  <p>
+                    软件不卖油，也不赚差价。你需要自己去 DeepSeek
+                    官方办一张“加油卡”，充点钱，然后插到软件里，车就能跑了。钱直接给
+                    DeepSeek，用多少扣多少，账单自己随时能查。不想用了，把卡删掉就行，余额还是你的。
                   </p>
                 </div>
               </div>
               <div className="deepseek-wizard__info-grid">
                 <div>
-                  <strong>你需要准备</strong>
-                  <span>一个 DeepSeek 账号和一个 API Key。</span>
+                  <strong>你要准备什么</strong>
+                  <span>一个 DeepSeek 账号，后面创建一枚 API Key。</span>
                 </div>
                 <div>
-                  <strong>费用说明</strong>
-                  <span>注册、充值和调用费用以服务商页面显示为准。</span>
+                  <strong>会产生费用吗</strong>
+                  <span>后续充值和模型调用费用以 DeepSeek 页面显示为准。</span>
                 </div>
                 <div>
-                  <strong>安全说明</strong>
-                  <span>密钥通过系统凭据窗口保存，界面不会回显完整密钥。</span>
+                  <strong>密钥安全吗</strong>
+                  <span>
+                    在本软件的密码框粘贴，保存后只保留受保护的本机凭据，界面不会回显完整密钥。
+                  </span>
+                </div>
+              </div>
+              <div className="deepseek-wizard__flow-preview">
+                <div className="deepseek-wizard__flow-preview-title">
+                  接下来会一步一步完成
+                </div>
+                <div className="deepseek-wizard__flow-steps">
+                  <div className="deepseek-wizard__flow-step">
+                    <span>1</span>
+                    <div>
+                      <strong>打开 DeepSeek 平台</strong>
+                      <small>注册、充值并创建 API Key</small>
+                    </div>
+                  </div>
+                  <div className="deepseek-wizard__flow-step">
+                    <span>2</span>
+                    <div>
+                      <strong>安全保存密钥</strong>
+                      <small>使用推荐的 DeepSeek 配置</small>
+                    </div>
+                  </div>
+                  <div className="deepseek-wizard__flow-step">
+                    <span>3</span>
+                    <div>
+                      <strong>测试连接</strong>
+                      <small>由你确认后发送测试请求</small>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="deepseek-wizard__actions-card">
-                <p>如果你已经有其他服务商的 API Key，可以直接使用通用配置。</p>
+                <p>已经有其他服务商的 API Key？可以直接使用高级配置。</p>
                 <Button
                   variant="ghost"
                   onClick={() => onOpenAdvanced(null)}
@@ -222,58 +316,143 @@ export function DeepSeekApiWizard({
           )}
 
           {step === 1 && (
-            <div className="deepseek-wizard__step">
+            <div className="deepseek-wizard__step deepseek-tutorial">
               <div className="deepseek-wizard__step-heading">
                 <span className="deepseek-wizard__step-number">1</span>
                 <div>
-                  <h3>申请 DeepSeek API Key</h3>
+                  <h3>三步拿到“加油卡”</h3>
                   <p>
-                    你将在浏览器中完成注册和创建密钥，CC Panel
-                    不会读取网页内容。
+                    按下面的顺序完成操作。图片可以点击或双击放大，API Key
+                    只显示一次，请复制完整。
                   </p>
                 </div>
               </div>
-              <ol className="deepseek-wizard__checklist">
-                <li>打开 DeepSeek 开放平台并注册或登录。</li>
-                <li>进入 API Key / 密钥管理页面。</li>
-                <li>创建一个新的 API Key 并复制它。</li>
-                <li>回到这里，点击下一步保存密钥。</li>
-              </ol>
-              <a
-                className="deepseek-wizard__external-link"
-                href="https://platform.deepseek.com/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink size={15} aria-hidden="true" />
-                打开 DeepSeek 开放平台
-              </a>
-              <label className="deepseek-wizard__checkbox">
-                <input
-                  type="checkbox"
-                  checked={hasCopiedKey}
-                  onChange={(event) => setHasCopiedKey(event.target.checked)}
-                />
-                <span>我已经创建并复制了 API Key</span>
-              </label>
-            </div>
-          )}
 
-          {step === 2 && (
-            <div className="deepseek-wizard__step">
-              <div className="deepseek-wizard__step-heading">
-                <span className="deepseek-wizard__step-number">2</span>
-                <div>
-                  <h3>保存密钥并使用推荐配置</h3>
-                  <p>
-                    点击保存后，系统会弹出安全凭据窗口，请在那里输入 API Key。
-                  </p>
+              <section className="deepseek-tutorial__section">
+                <div className="deepseek-tutorial__section-heading">
+                  <span>1</span>
+                  <div>
+                    <strong>打开 platform.deepseek.com，注册并登录。</strong>
+                    <a
+                      className="deepseek-wizard__external-link"
+                      href="https://platform.deepseek.com/usage"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={15} aria-hidden="true" />
+                      打开 DeepSeek 平台
+                    </a>
+                  </div>
                 </div>
-              </div>
+                <TutorialImageCard
+                  image={{
+                    src: loginImage,
+                    alt: "DeepSeek 登录界面示意图",
+                    title: "登录界面",
+                  }}
+                  onOpen={setPreviewImage}
+                />
+              </section>
+
+              <section className="deepseek-tutorial__section">
+                <div className="deepseek-tutorial__section-heading">
+                  <span>2</span>
+                  <div>
+                    <strong>
+                      点击左侧 “API Keys” → “创建”，复制那串 sk- 开头的密钥（只显示一次，务必保存）。
+                    </strong>
+                    <p>如果提示余额不足，去 DeepSeek 充几块钱即可。</p>
+                    <a
+                      className="deepseek-wizard__external-link"
+                      href="https://platform.deepseek.com/usage"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={15} aria-hidden="true" />
+                      打开充值和用量页面
+                    </a>
+                  </div>
+                </div>
+                <div className="deepseek-tutorial__images">
+                  <TutorialImageCard
+                    image={{
+                      src: homeImage,
+                      alt: "DeepSeek 登录后的主页",
+                      title: "登录后的主页",
+                    }}
+                    onOpen={setPreviewImage}
+                  />
+                  <TutorialImageCard
+                    image={{
+                      src: rechargeImage,
+                      alt: "DeepSeek 充值页面",
+                      title: "余额不足时前往充值",
+                    }}
+                    onOpen={setPreviewImage}
+                  />
+                  <TutorialImageCard
+                    image={{
+                      src: apiKeyImage,
+                      alt: "DeepSeek API Keys 页面",
+                      title: "打开 API Keys",
+                    }}
+                    onOpen={setPreviewImage}
+                  />
+                  <TutorialImageCard
+                    image={{
+                      src: apiNameImage,
+                      alt: "创建 API Key 时填写名称",
+                      title: "创建 API Key",
+                    }}
+                    onOpen={setPreviewImage}
+                  />
+                  <TutorialImageCard
+                    image={{
+                      src: copyApiKeyImage,
+                      alt: "复制 DeepSeek API Key",
+                      title: "复制 sk- 开头的密钥",
+                    }}
+                    onOpen={setPreviewImage}
+                  />
+                </div>
+              </section>
+
+              <section className="deepseek-tutorial__section">
+                <div className="deepseek-tutorial__section-heading">
+                  <span>3</span>
+                  <div>
+                    <strong>回到本软件，粘贴密钥，保存。</strong>
+                    <p>保存后会自动创建并选中一个名为“默认模型”的 DeepSeek 配置。</p>
+                  </div>
+                </div>
+                <div className="deepseek-tutorial__key-card">
+                  <label htmlFor="deepseek-api-key">在这里粘贴 DeepSeek API Key</label>
+                  <input
+                    id="deepseek-api-key"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={apiKey}
+                    placeholder="sk-..."
+                    aria-invalid={Boolean(apiKeyError)}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                      setApiKeyError("");
+                    }}
+                  />
+                  <span>密钥通常以 sk- 开头，只显示一次，请确认已经复制完整。</span>
+                  {apiKeyError && (
+                    <small className="deepseek-tutorial__key-error">
+                      {apiKeyError}
+                    </small>
+                  )}
+                </div>
+              </section>
+
               <div className="deepseek-wizard__config-preview">
                 <div>
-                  <span>服务商</span>
-                  <strong>{preset.label}</strong>
+                  <span>名称</span>
+                  <strong>默认模型</strong>
                 </div>
                 <div>
                   <span>API 地址</span>
@@ -287,21 +466,13 @@ export function DeepSeekApiWizard({
               <div className="deepseek-wizard__security-note">
                 <ShieldCheck size={18} aria-hidden="true" />
                 <p>
-                  API Key 不会进入聊天内容、React 状态或普通 IPC
-                  请求。保存后只显示“密钥已保存”。
+                  API Key 只用于保存到本机的受保护凭据中，不会显示在聊天内容里，也不会被回显。
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                onClick={() => onOpenAdvanced(null)}
-                disabled={saving}
-              >
-                打开高级配置
-              </Button>
             </div>
           )}
 
-          {step === 3 && (
+          {step === 2 && (
             <div className="deepseek-wizard__step">
               {testResult?.ok ? (
                 <div className="deepseek-wizard__result deepseek-wizard__result--success">
@@ -317,7 +488,7 @@ export function DeepSeekApiWizard({
               ) : (
                 <>
                   <div className="deepseek-wizard__step-heading">
-                    <span className="deepseek-wizard__step-number">3</span>
+                    <span className="deepseek-wizard__step-number">2</span>
                     <div>
                       <h3>测试连接</h3>
                       <p>
@@ -375,30 +546,21 @@ export function DeepSeekApiWizard({
                 onClick={() => setStep(1)}
                 icon={<ArrowRight size={14} />}
               >
-                开始示例
+                开始配置 DeepSeek
               </Button>
             )}
             {step === 1 && (
               <Button
                 variant="primary"
-                disabled={!hasCopiedKey}
-                onClick={() => setStep(2)}
-                icon={<ArrowRight size={14} />}
-              >
-                下一步
-              </Button>
-            )}
-            {step === 2 && (
-              <Button
-                variant="primary"
                 busy={saving}
-                onClick={() => onSave(saveProfile)}
+                disabled={!apiKey.trim() || saving}
+                onClick={submitApiKey}
                 icon={<KeyRound size={14} />}
               >
-                保存并输入 API Key
+                保存并配置默认模型
               </Button>
             )}
-            {step === 3 && !testResult?.ok && (
+            {step === 2 && !testResult?.ok && (
               <Button
                 variant="primary"
                 busy={testing}
@@ -410,7 +572,7 @@ export function DeepSeekApiWizard({
                 测试连接
               </Button>
             )}
-            {step === 3 && testResult?.ok && (
+            {step === 2 && testResult?.ok && (
               <Button
                 variant="primary"
                 onClick={onClose}
@@ -422,6 +584,31 @@ export function DeepSeekApiWizard({
           </div>
         </footer>
       </section>
+      {previewImage && (
+        <div
+          className="deepseek-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`放大查看：${previewImage.title}`}
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="deepseek-image-lightbox__panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="deepseek-image-lightbox__close"
+              aria-label="关闭图片预览"
+              onClick={() => setPreviewImage(null)}
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+            <img src={previewImage.src} alt={previewImage.alt} />
+            <p>{previewImage.title}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

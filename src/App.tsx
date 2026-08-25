@@ -210,6 +210,7 @@ export default function App() {
   );
   const [deepSeekTestResult, setDeepSeekTestResult] =
     useState<ModelConnectionTestResult | null>(null);
+  const [deepSeekSaving, setDeepSeekSaving] = useState(false);
   const [environmentReport, setEnvironmentReport] =
     useState<EnvironmentReport>();
   const [downloadedUpdate, setDownloadedUpdate] = useState<DownloadedUpdate>();
@@ -855,32 +856,35 @@ export default function App() {
     onError: reportError,
     onSettled: () => setModelDialogBusy(false),
   });
-  const deepSeekSaveMutation = useMutation({
-    mutationFn: (profile: ModelProfileInput) =>
-      commands.promptAndSaveModelProfile(
-        profile,
-        profilesQuery.data?.revision ?? 0,
-      ),
-    onSuccess: (next, profile) => {
-      if (!next) {
-        setOperationMessage("已取消凭据输入，模型配置未保存。");
-        return;
+  const saveDeepSeekProfile = useCallback(
+    async (profile: ModelProfileInput, apiKey: string) => {
+      setDeepSeekSaving(true);
+      try {
+        const next = await commands.saveModelProfileWithApiKey(
+          profile,
+          apiKey,
+          profilesQuery.data?.revision ?? 0,
+        );
+        queryClient.setQueryData(["model-profiles"], next);
+        const saved = next.profiles.find(
+          (item) =>
+            item.providerName === profile.providerName &&
+            item.baseUrl === profile.baseUrl &&
+            item.modelId === profile.modelId &&
+            item.hasApiKey,
+        );
+        setDeepSeekProfileId(saved?.id ?? null);
+        setDeepSeekTestResult(null);
+        setOperationMessage("默认模型已保存，可以继续测试连接。");
+        setLiveMessage("默认模型已保存。 ");
+      } catch (error) {
+        reportError(error);
+      } finally {
+        setDeepSeekSaving(false);
       }
-      queryClient.setQueryData(["model-profiles"], next);
-      const saved = next.profiles.find(
-        (item) =>
-          item.providerName === profile.providerName &&
-          item.baseUrl === profile.baseUrl &&
-          item.modelId === profile.modelId &&
-          item.hasApiKey,
-      );
-      setDeepSeekProfileId(saved?.id ?? null);
-      setDeepSeekTestResult(null);
-      setOperationMessage("DeepSeek 配置已保存，可以进行连接测试。");
-      setLiveMessage("DeepSeek 配置已保存。 ");
     },
-    onError: reportError,
-  });
+    [profilesQuery.data?.revision, queryClient, reportError],
+  );
 
   const deepSeekTestMutation = useMutation({
     mutationFn: (profileId: string) =>
@@ -2366,11 +2370,11 @@ export default function App() {
       />
       <DeepSeekApiWizard
         open={deepSeekWizardOpen}
-        saving={deepSeekSaveMutation.isPending}
+        saving={deepSeekSaving}
         testing={deepSeekTestMutation.isPending}
         savedProfile={deepSeekProfile}
         testResult={deepSeekTestResult}
-        onSave={(profile) => deepSeekSaveMutation.mutate(profile)}
+        onSave={(profile, apiKey) => void saveDeepSeekProfile(profile, apiKey)}
         onTest={(profileId) => deepSeekTestMutation.mutate(profileId)}
         onOpenAdvanced={openAdvancedModelConfig}
         onClose={() => {

@@ -97,6 +97,16 @@ export const commands = {
   listModelProfiles: () => call<ModelProfileList>("list_model_profiles"),
   saveModelProfile: (profile: ModelProfileInput, expectedRevision: number) =>
     call<ModelProfileList>("save_model_profile", { profile, expectedRevision }),
+  saveModelProfileWithApiKey: (
+    profile: ModelProfileInput,
+    apiKey: string,
+    expectedRevision: number,
+  ) =>
+    call<ModelProfileList>("save_model_profile_with_api_key", {
+      profile,
+      apiKey,
+      expectedRevision,
+    }),
   promptAndSaveModelProfile: (
     profile: ModelProfileInput,
     expectedRevision: number,

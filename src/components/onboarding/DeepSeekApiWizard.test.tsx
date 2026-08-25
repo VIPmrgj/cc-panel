@@ -36,57 +36,82 @@ describe("DeepSeekApiWizard", () => {
   it("explains the API Key flow before asking for credentials", () => {
     render(<DeepSeekApiWizard {...makeProps()} />);
     expect(
-      screen.getByRole("heading", { name: "先用一个例子学会接入模型" }),
+      screen.getByRole("heading", {
+        name: "为什么需要 API Key？——就像给汽车加油",
+      }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/API Key 可以理解成模型服务的密码/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/本软件就像一辆好用的汽车/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "我已有其他 API Key" }),
     ).toBeInTheDocument();
   });
 
-  it("requires confirmation before advancing from the provider page", async () => {
-    const user = userEvent.setup();
-    render(<DeepSeekApiWizard {...makeProps()} />);
-    await user.click(screen.getByRole("button", { name: "开始示例" }));
-
-    expect(
-      screen.getByRole("link", { name: /打开 DeepSeek 开放平台/ }),
-    ).toHaveAttribute("href", "https://platform.deepseek.com/");
-    const next = screen.getByRole("button", { name: "下一步" });
-    expect(next).toBeDisabled();
-    await user.click(
-      screen.getByRole("checkbox", { name: "我已经创建并复制了 API Key" }),
-    );
-    expect(next).toBeEnabled();
-    await user.click(next);
-    expect(
-      screen.getByRole("heading", { name: "保存密钥并使用推荐配置" }),
-    ).toBeInTheDocument();
-  });
-
-  it("saves only the preset profile and lets the native dialog collect the key", async () => {
+  it("shows the three-step guide and saves a named default DeepSeek profile", async () => {
     const user = userEvent.setup();
     const props = makeProps();
     render(<DeepSeekApiWizard {...props} />);
-    await user.click(screen.getByRole("button", { name: "开始示例" }));
-    await user.click(
-      screen.getByRole("checkbox", { name: "我已经创建并复制了 API Key" }),
-    );
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(
-      screen.getByRole("button", { name: "保存并输入 API Key" }),
-    );
+    await user.click(screen.getByRole("button", { name: "开始配置 DeepSeek" }));
 
-    expect(props.onSave).toHaveBeenCalledWith({
-      providerName: "DeepSeek",
-      note: "通过 DeepSeek 新手引导配置",
-      websiteUrl: "https://platform.deepseek.com/",
-      baseUrl: "https://api.deepseek.com/anthropic",
-      modelId: "deepseek-v4-pro",
-      selected: true,
-    });
+    expect(
+      screen.getByRole("heading", { name: "三步拿到“加油卡”" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /打开 DeepSeek 平台/ }),
+    ).toHaveAttribute("href", "https://platform.deepseek.com/usage");
+    expect(
+      screen.getByRole("img", { name: "DeepSeek 登录界面示意图" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "复制 DeepSeek API Key" }),
+    ).toBeInTheDocument();
+
+    const save = screen.getByRole("button", { name: "保存并配置默认模型" });
+    expect(save).toBeDisabled();
+    await user.type(
+      screen.getByLabelText("在这里粘贴 DeepSeek API Key"),
+      "sk-test-key",
+    );
+    expect(save).toBeEnabled();
+    await user.click(save);
+
+    expect(props.onSave).toHaveBeenCalledWith(
+      {
+        providerName: "默认模型",
+        note: "DeepSeek",
+        websiteUrl: "https://platform.deepseek.com/",
+        baseUrl: "https://api.deepseek.com/anthropic",
+        modelId: "deepseek-v4-pro",
+        selected: true,
+      },
+      "sk-test-key",
+    );
+  });
+
+  it("rejects a key that is not copied completely", async () => {
+    const user = userEvent.setup();
+    render(<DeepSeekApiWizard {...makeProps()} />);
+    await user.click(screen.getByRole("button", { name: "开始配置 DeepSeek" }));
+    await user.type(
+      screen.getByLabelText("在这里粘贴 DeepSeek API Key"),
+      "not-a-key",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "保存并配置默认模型" }),
+    );
+    expect(
+      screen.getByText("API Key 通常以 sk- 开头，请检查是否复制完整。"),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a tutorial image in the accessible preview", async () => {
+    const user = userEvent.setup();
+    render(<DeepSeekApiWizard {...makeProps()} />);
+    await user.click(screen.getByRole("button", { name: "开始配置 DeepSeek" }));
+    await user.click(
+      screen.getByRole("button", { name: "放大查看：登录界面" }),
+    );
+    expect(screen.getByRole("dialog", { name: "放大查看：登录界面" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭图片预览" })).toBeInTheDocument();
   });
 
   it("does not test until the user acknowledges possible cost", async () => {
