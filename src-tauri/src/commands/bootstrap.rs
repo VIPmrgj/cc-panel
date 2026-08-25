@@ -210,6 +210,19 @@ fn run_powershell_streaming(
             break;
         }
         let line = decode_powershell_line(&raw_line);
+        if let Some(raw_message) = line.strip_prefix("CCP_MESSAGE=") {
+            if let Some(step) = current_step {
+                let (phase, _) = domestic_step_info(step);
+                emit_domestic_install_progress(
+                    app,
+                    step,
+                    phase,
+                    "running",
+                    Some(raw_message.trim()),
+                );
+            }
+            continue;
+        }
         let Some(raw_step) = line.strip_prefix("CCP_STEP=") else {
             if line.starts_with("CCP_ERROR=") {
                 stdout_lines.clear();
@@ -438,13 +451,16 @@ function Install-Node {
   try { Install-NodeFromMirror } catch { throw ('winget 不可用或安装失败，国内镜像安装也失败：'+$_.Exception.Message) }
 }
 Write-Output 'CCP_STEP=node'
+Write-Output 'CCP_MESSAGE=正在检查 Node.js；已安装则自动跳过'
 Refresh-CCPath
 if(-not(Has-Tool 'node')){try{Install-Node}catch{Write-Output ('CCP_ERROR=Node.js 安装失败：'+$_.Exception.Message);exit 32};Refresh-CCPath}
 if(-not(Has-Tool 'node')){Write-Output 'CCP_ERROR=Node.js 安装后仍未找到可执行文件';exit 33}
 Write-Output 'CCP_STEP=npm'
+Write-Output 'CCP_MESSAGE=正在检查 npm，并设置国内安装源'
 if(-not(Has-Tool 'npm')){Write-Output 'CCP_ERROR=Node.js 安装后没有找到 npm';exit 41}
 $null = npm.cmd config set registry 'https://registry.npmmirror.com/' --global
 Write-Output 'CCP_STEP=claude'
+Write-Output 'CCP_MESSAGE=正在安装或更新 Claude Code；这一步可能需要几分钟'
 $null = npm.cmd install --global '@anthropic-ai/claude-code@latest' --registry 'https://registry.npmmirror.com/'
 if($LASTEXITCODE -ne 0){$null = npm.cmd install --global '@anthropic-ai/claude-code@latest';if($LASTEXITCODE -ne 0){Write-Output ("CCP_ERROR=Claude Code 安装失败，npm 返回代码："+$LASTEXITCODE);exit 44}}
 Refresh-CCPath
@@ -582,6 +598,8 @@ mod tests {
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("winget.exe install"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("--disable-interactivity"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("$OutputEncoding"));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("CCP_MESSAGE="));
+        assert!(DOMESTIC_INSTALL_SCRIPT.contains("claude --version"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("Install-NodeFromMirror"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("https://npmmirror.com/mirrors/node/index.json"));
         assert!(DOMESTIC_INSTALL_SCRIPT.contains("$null = npm.cmd install"));

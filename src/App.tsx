@@ -232,6 +232,7 @@ export default function App() {
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const lastCompositionRef = useRef<CompositionRequest | null>(null);
   const pendingPermissionRef = useRef<string | null>(null);
+  const autoRecoveryAttemptRef = useRef<string | null>(null);
   const sessionPermissionRulesRef = useRef<Record<string, PermissionRule[]>>(
     {},
   );
@@ -1717,6 +1718,32 @@ export default function App() {
     transitionIsCurrent,
   ]);
 
+  useEffect(() => {
+    const current = chat;
+    if (
+      !current.processReleased ||
+      !current.activeTurnId ||
+      current.turnStatus !== "failed" ||
+      !current.sessionId ||
+      !current.runId ||
+      current.pendingPermission ||
+      !["exited", "failed", "timed-out", "disconnected"].includes(
+        current.lifecycle,
+      ) ||
+      current.recoveryStatus !== "none"
+    ) {
+      return;
+    }
+
+    const recoveryKey = current.sessionId + ":" + current.runId;
+    if (autoRecoveryAttemptRef.current === recoveryKey) return;
+    autoRecoveryAttemptRef.current = recoveryKey;
+    setOperationMessage(
+      "Claude 进程异常退出，正在自动恢复会话；当前回合不会自动重复执行。",
+    );
+    setLiveMessage("会话正在恢复，恢复完成后请重试当前回合。");
+    void recoverCurrentSession();
+  }, [chat, recoverCurrentSession]);
   const handleConversationSelect = useCallback(
     async (conversation: ConversationSummary) => {
       if (sendInFlightRef.current) return;

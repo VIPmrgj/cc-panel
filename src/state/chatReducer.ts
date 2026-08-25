@@ -426,7 +426,7 @@ function clearActiveTurn(messages: ChatMessage[]) {
     recoveryStatus: "none" as const,
     lastEventAt: null,
     pendingPermission: null,
-    messages: resolvePendingPermissions(messages),
+    messages: finalizeRunningAssistants(resolvePendingPermissions(messages)),
   };
 }
 

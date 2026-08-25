@@ -7,6 +7,7 @@ use std::{
 
 use reqwest::redirect::Policy;
 use serde::Deserialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -585,7 +586,7 @@ pub fn collect_diagnostics(state: tauri::State<'_, AppState>) -> ApiResult<Diagn
         "appVersion": env!("CARGO_PKG_VERSION"),
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
-        "projectPath": state.project_root().map(|path| path.to_string_lossy().into_owned()),
+        "projectSelected": state.project_root().is_some(),
         "claudeVersion": check_claude().1,
         "conversationCount": state.conversations.list().len(),
         "modelProfiles": state.model_profiles.list()?.profiles.iter().map(|profile| serde_json::json!({
@@ -598,6 +599,13 @@ pub fn collect_diagnostics(state: tauri::State<'_, AppState>) -> ApiResult<Diagn
         }))),
         "settingsRevision": state.settings.settings_revision().ok(),
     });
+    if !diagnostic_payload_is_safe(&report) {
+        return Err(ApiError::new(
+            "DIAGNOSTIC_CONTAINS_SECRET",
+            "诊断信息包含不应导出的敏感字段，已停止生成。",
+            false,
+        ));
+    }
     let bytes = serde_json::to_vec_pretty(&report)
         .map_err(|_| ApiError::new("DIAGNOSTIC_SERIALIZATION_FAILED", "无法生成诊断包。", false))?;
     if bytes.len() > DIAGNOSTIC_LIMIT {
@@ -621,6 +629,28 @@ pub fn collect_diagnostics(state: tauri::State<'_, AppState>) -> ApiResult<Diagn
     })
 }
 
+fn diagnostic_payload_is_safe(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => object.iter().all(|(key, value)| {
+            !matches!(
+                key.as_str(),
+                "apiKey"
+                    | "api_key"
+                    | "protectedApiKey"
+                    | "ANTHROPIC_API_KEY"
+                    | "ANTHROPIC_AUTH_TOKEN"
+                    | "token"
+                    | "secret"
+            ) && diagnostic_payload_is_safe(value)
+        }),
+        Value::Array(values) => values.iter().all(diagnostic_payload_is_safe),
+        Value::String(text) => {
+            let value = text.trim();
+            !value.starts_with("sk-") && !value.starts_with("Bearer ")
+        }
+        _ => true,
+    }
+}
 fn is_safe_directory(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
@@ -676,6 +706,21 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_payload_guard_allows_safe_summary_and_rejects_secrets() {
+        assert!(diagnostic_payload_is_safe(&serde_json::json!({
+            "hasApiKey": true,
+            "providerName": "DeepSeek",
+            "modelId": "deepseek-chat",
+        })));
+        assert!(!diagnostic_payload_is_safe(&serde_json::json!({
+            "apiKey": "sk-test-secret",
+        })));
+        assert!(!diagnostic_payload_is_safe(&serde_json::json!({
+            "message": "Bearer sk-test-secret",
+        })));
+    }
 
     #[test]
     fn project_memory_round_trip_supports_multiline_rules() {

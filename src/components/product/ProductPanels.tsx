@@ -17,6 +17,7 @@ import type {
   ProjectMemoryInput,
   UpdateInfo,
 } from "../../api/dto";
+import { Notice } from "../common/Notice";
 
 export function ProjectMemoryPanel({
   memory,
@@ -287,6 +288,10 @@ export function UpdateDiagnosticPanel({
           <p>检查发布版本，或生成不含密钥和会话正文的诊断包。</p>
         </div>
       </div>
+      <Notice tone="info">
+        诊断包只包含版本、运行环境、模型配置摘要和数量统计，不包含 API
+        Key、会话正文或项目完整路径。分享前仍建议先打开文件快速检查一遍。
+      </Notice>
       <div className="maintenance-actions">
         <button
           type="button"

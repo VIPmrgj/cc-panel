@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use reqwest::{redirect::Policy, Client, StatusCode};
 use serde_json::json;
 use url::Url;
@@ -10,6 +11,7 @@ use super::ResolvedModelSecret;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const PROVIDER_ERROR_BODY_LIMIT: usize = 8 * 1024;
 
 pub async fn test_connection(secret: ResolvedModelSecret) -> ApiResult<ModelConnectionTestResult> {
     let endpoint = messages_endpoint(&secret.profile.base_url)?;
@@ -50,16 +52,36 @@ pub async fn test_connection(secret: ResolvedModelSecret) -> ApiResult<ModelConn
                 )
             }
         })?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(classify_status(
+            status,
+            &secret.profile.provider_name,
+            &secret.profile.model_id,
+            "",
+        ));
+    }
+    let body = response_body_excerpt(response).await;
     let result = classify_status(
-        response.status(),
+        status,
         &secret.profile.provider_name,
         &secret.profile.model_id,
+        &body,
     );
-    if result.ok {
-        Ok(result)
-    } else {
-        Err(ApiError::new(&result.code, &result.message, true))
+    Err(ApiError::new(&result.code, &result.message, true))
+}
+async fn response_body_excerpt(response: reqwest::Response) -> String {
+    let mut bytes = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else { break };
+        let remaining = PROVIDER_ERROR_BODY_LIMIT.saturating_sub(bytes.len());
+        if remaining == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
     }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn messages_endpoint(base_url: &str) -> ApiResult<Url> {
@@ -89,6 +111,7 @@ fn classify_status(
     status: StatusCode,
     provider_name: &str,
     model_id: &str,
+    body: &str,
 ) -> ModelConnectionTestResult {
     let (ok, code, message) = match status {
         status if status.is_success() => (
@@ -99,17 +122,50 @@ fn classify_status(
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => (
             false,
             "MODEL_TEST_AUTH_FAILED",
-            "API Key 无效或没有使用该模型的权限。".to_owned(),
+            if status == StatusCode::FORBIDDEN {
+                "API Key 已被识别，但当前账号没有使用该模型或接口的权限。".to_owned()
+            } else {
+                "API Key 无效、已过期或未被服务商接受，请重新检查后保存。".to_owned()
+            },
         ),
-        StatusCode::PAYMENT_REQUIRED | StatusCode::TOO_MANY_REQUESTS => (
+        StatusCode::PAYMENT_REQUIRED => (
             false,
-            "MODEL_TEST_PROVIDER_LIMIT",
-            "服务商拒绝了请求，可能是余额不足、限流或账户额度已用完。".to_owned(),
+            "MODEL_TEST_BALANCE",
+            "账户余额不足或尚未开通计费，请到服务商控制台查看余额后重试。".to_owned(),
         ),
-        StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND => (
+        StatusCode::TOO_MANY_REQUESTS => (
             false,
-            "MODEL_TEST_CONFIGURATION",
-            "模型或 API 地址不正确，请检查配置。".to_owned(),
+            "MODEL_TEST_RATE_LIMIT",
+            "请求过于频繁或已达到账户额度限制，请稍后重试。".to_owned(),
+        ),
+        StatusCode::BAD_REQUEST
+            if body_mentions(body, &["balance", "insufficient", "quota", "余额", "欠费"]) =>
+        {
+            (
+                false,
+                "MODEL_TEST_BALANCE",
+                "服务商提示账户余额或额度不足，请到服务商控制台查看后重试。".to_owned(),
+            )
+        }
+        StatusCode::BAD_REQUEST if body_mentions(body, &["model", "模型"]) => (
+            false,
+            "MODEL_TEST_MODEL",
+            "模型 ID 不正确，或当前账号没有使用该模型的权限。".to_owned(),
+        ),
+        StatusCode::BAD_REQUEST => (
+            false,
+            "MODEL_TEST_REQUEST",
+            "服务商拒绝了测试请求，请检查 API 地址、模型 ID 和接口格式。".to_owned(),
+        ),
+        StatusCode::NOT_FOUND if body_mentions(body, &["model", "模型"]) => (
+            false,
+            "MODEL_TEST_MODEL",
+            "找不到指定模型，请检查模型 ID 或账号权限。".to_owned(),
+        ),
+        StatusCode::NOT_FOUND => (
+            false,
+            "MODEL_TEST_ENDPOINT",
+            "找不到模型 API 地址，请检查是否填写了 Anthropic 兼容接口地址。".to_owned(),
         ),
         status if status.is_server_error() => (
             false,
@@ -129,6 +185,12 @@ fn classify_status(
         provider_name: provider_name.to_owned(),
         model_id: model_id.to_owned(),
     }
+}
+fn body_mentions(body: &str, terms: &[&str]) -> bool {
+    let lower = body.to_ascii_lowercase();
+    terms
+        .iter()
+        .any(|term| lower.contains(&term.to_ascii_lowercase()))
 }
 
 fn invalid_endpoint() -> ApiError {
@@ -162,9 +224,31 @@ mod tests {
 
     #[test]
     fn classifies_provider_status_without_returning_response_body() {
-        let result = classify_status(StatusCode::UNAUTHORIZED, "DeepSeek", "deepseek-v4-pro");
+        let result = classify_status(StatusCode::UNAUTHORIZED, "DeepSeek", "deepseek-v4-pro", "");
         assert!(!result.ok);
         assert_eq!(result.code, "MODEL_TEST_AUTH_FAILED");
         assert!(!result.message.contains("sk-"));
+    }
+
+    #[test]
+    fn classifies_balance_rate_limit_and_model_errors() {
+        assert_eq!(
+            classify_status(StatusCode::PAYMENT_REQUIRED, "DeepSeek", "model", "").code,
+            "MODEL_TEST_BALANCE"
+        );
+        assert_eq!(
+            classify_status(StatusCode::TOO_MANY_REQUESTS, "DeepSeek", "model", "").code,
+            "MODEL_TEST_RATE_LIMIT"
+        );
+        assert_eq!(
+            classify_status(
+                StatusCode::BAD_REQUEST,
+                "DeepSeek",
+                "model",
+                "model not found"
+            )
+            .code,
+            "MODEL_TEST_MODEL"
+        );
     }
 }

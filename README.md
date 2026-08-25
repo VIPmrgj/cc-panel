@@ -6,7 +6,9 @@ CC Panel 是运行在 Windows 上的 Claude Code 本地图形控制面板。它�
 
 ## 下载体验
 
-Windows 用户可以直接下载当前体验版：[CC Panel 0.1.25 安装包](./CC%20Panel_0.1.25_x64-setup.exe)。没有 API Key 时也可以先使用“演示模式”；真实 Agent 对话直接在 CC Panel 的模型栏配置第三方模型，不需要 CC-Switch。
+Windows 用户请从 [GitHub Releases](https://github.com/VIPmrgj/cc-panel/releases/latest) 下载最新安装包。没有 API Key 时也可以先使用“演示模式”；真实 Agent 对话直接在 CC Panel 的模型栏配置第三方模型，不需要 CC-Switch。
+
+每次推送形如 v0.1.26 的版本标签后，GitHub Actions 会在 Windows 构建并把 NSIS、MSI 安装包发布到对应 Release，不再把二进制安装包放进代码仓库。
 
 ## 当前能力
 
