@@ -169,9 +169,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       runId: action.runId ?? null,
       processReleased: !action.sessionId,
       interruptionRequested: false,
-      activeTool: null,
-      recoveryStatus: "none",
-      lastEventAt: null,
     };
   }
 
@@ -183,14 +180,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       ...state,
       viewGeneration: generation,
       lifecycle: "stopping",
-      turnStatus: "idle",
-      activeTurnId: null,
-      activeAssistantId: null,
-      activeTool: null,
-      recoveryStatus: "none",
-      lastEventAt: null,
-      pendingPermission: null,
-      messages: resolvePendingPermissions(state.messages),
+      ...clearActiveTurn(state.messages),
     };
   }
 
@@ -204,15 +194,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       lifecycle: "starting",
       processReleased: false,
       interruptionRequested: false,
-      turnStatus: "idle",
-      activeTurnId: null,
-      activeAssistantId: null,
-      activeTool: null,
-      recoveryStatus: "none",
-      lastEventAt: null,
+      ...clearActiveTurn(state.messages),
       statusMessage: null,
-      pendingPermission: null,
-      messages: resolvePendingPermissions(state.messages),
     };
   }
 
@@ -230,15 +213,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       lifecycle: "starting",
       processReleased: false,
       interruptionRequested: false,
-      turnStatus: "idle",
-      activeTurnId: null,
-      activeAssistantId: null,
-      activeTool: null,
-      recoveryStatus: "none",
-      lastEventAt: null,
+      ...clearActiveTurn(state.messages),
       statusMessage: null,
-      pendingPermission: null,
-      messages: resolvePendingPermissions(state.messages),
       lastSequence: -1,
     };
   }
@@ -250,16 +226,15 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     ) {
       return state;
     }
+    const pendingPermission = findPendingPermission(action.messages);
     return {
       ...state,
       sessionId: action.sessionId,
       activeTool: null,
       recoveryStatus: "none",
       messages: action.messages,
-      pendingPermission: findPendingPermission(action.messages),
-      turnStatus: findPendingPermission(action.messages)
-        ? "awaiting-permission"
-        : "idle",
+      pendingPermission,
+      turnStatus: pendingPermission ? "awaiting-permission" : "idle",
       lastSequence: -1,
     };
   }
@@ -440,6 +415,19 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     recoveryStatus: "none",
   };
   return reduceEvent(accepted, envelope.event);
+}
+
+function clearActiveTurn(messages: ChatMessage[]) {
+  return {
+    turnStatus: "idle" as const,
+    activeTurnId: null,
+    activeAssistantId: null,
+    activeTool: null,
+    recoveryStatus: "none" as const,
+    lastEventAt: null,
+    pendingPermission: null,
+    messages: resolvePendingPermissions(messages),
+  };
 }
 
 function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {

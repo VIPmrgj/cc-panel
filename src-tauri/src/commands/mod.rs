@@ -8,6 +8,7 @@ mod models;
 mod ollama;
 
 mod roots;
+mod session_events;
 mod sessions;
 mod skills;
 
