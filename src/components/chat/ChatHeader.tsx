@@ -6,6 +6,7 @@ interface Props {
   title: string;
   profile: ModelProfile | null;
   status: ChatRunState;
+  terminationReason?: "switching-model" | "interrupted" | null;
   panelOpen: boolean;
   onTogglePanel: () => void;
   onSelectModel: () => void;
@@ -30,6 +31,7 @@ export function ChatHeader({
   title,
   profile,
   status,
+  terminationReason = null,
   panelOpen,
   onTogglePanel,
   onSelectModel,
@@ -75,7 +77,11 @@ export function ChatHeader({
       <div className="chat-header__actions">
         <span className={`session-state session-state--${status}`}>
           <i aria-hidden="true" />
-          {statusLabels[status]}
+          {terminationReason === "switching-model"
+            ? "正在切换模型"
+            : terminationReason === "interrupted"
+              ? "会话已中断"
+              : statusLabels[status]}{" "}
         </span>
         <button type="button" className="header-action" onClick={onNewChat}>
           <Plus size={15} aria-hidden="true" />

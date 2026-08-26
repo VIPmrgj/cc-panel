@@ -224,7 +224,11 @@ export function PermissionCard({
           title={risk.reason}
           data-risk={risk.level}
         >
-          {risk.level === "high" ? "高风险，需确认" : "低风险，将自动允许"}
+          {busy
+            ? "正在处理"
+            : risk.level === "high"
+              ? "高风险，需确认"
+              : "低风险，将自动允许"}
         </span>
         <span className="chat-card__status">
           {expired ? "已失效" : `待处理 ${pendingCount} 项`}
@@ -238,7 +242,7 @@ export function PermissionCard({
         ) : (
           "Claude Code 请求执行一个受保护的操作"
         )}
-        {!expired && "，请确认后继续。"}
+        {!expired && (busy ? "，正在等待处理结果。" : "，请确认后继续。")}
       </p>
       <dl className="permission-details">
         <div>

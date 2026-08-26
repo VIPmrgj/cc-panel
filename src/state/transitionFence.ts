@@ -48,3 +48,39 @@ export function finishTransitionState(
     activeGeneration: null,
   };
 }
+
+const ACTIVE_MODEL_SWITCH_STATES = new Set([
+  "starting",
+  "thinking",
+  "tool-running",
+  "awaiting-permission",
+  "stopping",
+  "stalled",
+  "recovering",
+]);
+
+/** Model changes are unsafe while Claude is still producing the current turn. */
+export function isModelSwitchBlocked(runState: string): boolean {
+  return ACTIVE_MODEL_SWITCH_STATES.has(runState);
+}
+
+/** An already-running, completed conversation needs a clean resume with the new model. */
+export function shouldRestartConversation(
+  state: {
+    sessionId: string | null;
+    runId: string | null;
+    processReleased: boolean;
+    turnStatus: string;
+    pendingPermission: unknown;
+  },
+  runState: string,
+): boolean {
+  return Boolean(
+    state.sessionId &&
+    state.runId &&
+    !state.processReleased &&
+    runState === "idle" &&
+    state.turnStatus === "idle" &&
+    !state.pendingPermission,
+  );
+}

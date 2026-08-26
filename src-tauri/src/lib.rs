@@ -102,6 +102,7 @@ pub fn run() {
             commands::start_claude_session,
             commands::send_claude_message,
             commands::stop_claude_session,
+            commands::force_stop_claude_session,
             commands::respond_to_permission,
             commands::retry_permission,
             commands::list_permission_rules,

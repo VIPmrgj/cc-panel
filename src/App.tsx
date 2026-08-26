@@ -85,6 +85,8 @@ import {
 import { composerReducer, initialComposerState } from "./state/composerReducer";
 import {
   beginTransitionState,
+  isModelSwitchBlocked,
+  shouldRestartConversation,
   finishTransitionState,
   transitionGenerationMatches,
   transitionIsCurrent as isCurrentTransition,
@@ -97,6 +99,50 @@ function apiErrorCode(error: unknown) {
   return typeof code === "string" ? code : null;
 }
 
+const PERMISSION_RESPONSE_TIMEOUT_MS = 15_000;
+
+function withPermissionTimeout<T>(operation: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      const timeout = new Error(
+        "权限处理在 15 秒内没有响应，请重新确认。",
+      ) as Error & { code: string };
+      timeout.code = "PERMISSION_RESPONSE_TIMEOUT";
+      reject(timeout);
+    }, PERMISSION_RESPONSE_TIMEOUT_MS);
+    operation.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function stopSessionWithFallback(
+  sessionId: string,
+  runId: string,
+): Promise<void> {
+  try {
+    await commands.stopClaudeSession(sessionId, runId);
+    return;
+  } catch (error) {
+    const code = apiErrorCode(error);
+    if (code === "SESSION_NOT_ACTIVE") return;
+    if (code !== "SESSION_STOP_TIMEOUT") throw error;
+    try {
+      await commands.forceStopClaudeSession(sessionId, runId);
+    } catch (forceError) {
+      if (apiErrorCode(forceError) !== "SESSION_NOT_ACTIVE") {
+        throw forceError;
+      }
+    }
+  }
+}
 function permissionInputFields(input: unknown) {
   if (!input || typeof input !== "object") {
     return { command: null as string | null, cwd: null as string | null };
@@ -199,7 +245,9 @@ export default function App() {
   }, []);
   const autoPromptedRef = useRef(false);
   const [transitionBusy, setTransitionBusy] = useState(false);
-  const [permissionBusy, setPermissionBusy] = useState(false);
+  const [permissionBusyIds, setPermissionBusyIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [modelDialog, setModelDialog] = useState<ModelProfile | null | false>(
     false,
   );
@@ -232,6 +280,7 @@ export default function App() {
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const lastCompositionRef = useRef<CompositionRequest | null>(null);
   const pendingPermissionRef = useRef<Set<string>>(new Set());
+  const autoApprovalBlockedRef = useRef<Set<string>>(new Set());
   const autoRecoveryAttemptRef = useRef<string | null>(null);
   const sessionPermissionRulesRef = useRef<Record<string, PermissionRule[]>>(
     {},
@@ -957,27 +1006,31 @@ export default function App() {
     mutationFn: async (profileId: string | null) => {
       if (sendInFlightRef.current)
         throw new Error("消息发送中，请稍后切换模型。");
-      const generation = beginTransition();
       const current = chatRef.current;
-      const shouldFork =
-        Boolean(current.sessionId && current.runId) &&
-        !["disconnected", "exited", "failed", "timed-out"].includes(
-          current.lifecycle,
-        );
+      const currentRunState = getChatRunState(current);
+      if (isModelSwitchBlocked(currentRunState)) {
+        throw new Error("当前回合正在生成，模型切换将在本轮完成后开放。");
+      }
+      const generation = beginTransition();
+      const shouldRestart = shouldRestartConversation(current, currentRunState);
       const previousProfileId =
         profilesQuery.data?.profiles.find((profile) => profile.selected)?.id ??
         null;
-      if (shouldFork) {
+      if (shouldRestart) {
+        setOperationMessage("Claude 正在切换模型…");
+        setLiveMessage("Claude 正在切换模型，请稍候。");
         dispatchChat({
           type: "session-leaving",
           generation,
           sessionId: current.sessionId!,
           runId: current.runId!,
+          reason: "switching-model",
         });
         await waitForSessionRelease();
         if (!transitionIsCurrent(generation)) {
           throw new Error("模型切换已被更新的操作取代。");
         }
+        activeChannelRef.current = null;
       }
       let selectedRevision: number | null = null;
       try {
@@ -986,17 +1039,21 @@ export default function App() {
           profilesQuery.data?.revision ?? 0,
         );
         selectedRevision = next.revision;
-        if (shouldFork) {
+        // Reflect the selection as soon as the persistent model setting is
+        // accepted. If the resume fails, the catch block restores the old
+        // selection instead of leaving the checkmark out of sync.
+        queryClient.setQueryData(["model-profiles"], next);
+        if (shouldRestart) {
           if (!transitionIsCurrent(generation)) {
             throw new Error("模型切换已被更新的操作取代。");
           }
           activeChannelRef.current = null;
           await startSession(
             {
-              mode: "fork",
-              parentSessionId: current.sessionId!,
+              mode: "resume",
+              sessionId: current.sessionId!,
               profileId,
-              title: "模型分支",
+              title: null,
             },
             generation,
           );
@@ -1005,7 +1062,7 @@ export default function App() {
         return next;
       } catch (error) {
         if (
-          shouldFork &&
+          shouldRestart &&
           selectedRevision !== null &&
           transitionIsCurrent(generation)
         ) {
@@ -1140,7 +1197,7 @@ export default function App() {
         );
         if (!transitionIsCurrent(generation)) {
           try {
-            await commands.stopClaudeSession(session.sessionId, session.runId);
+            await stopSessionWithFallback(session.sessionId, session.runId);
           } catch {
             // A stale successful start may already have exited. It must never be
             // activated or allowed to occupy the singleton manager.
@@ -1173,10 +1230,19 @@ export default function App() {
     const runId = current.runId;
     if (!sessionId || !runId) return;
     try {
-      await commands.stopClaudeSession(sessionId, runId);
+      dispatchChat({
+        type: "session-leaving",
+        sessionId,
+        runId,
+        reason: "interrupted",
+      });
+      setOperationMessage("Claude 正在中断当前回合…");
+      setLiveMessage("Claude 正在中断当前回合，请稍候。");
+      await stopSessionWithFallback(sessionId, runId);
       queuedPromptsRef.current = [];
       setQueuedPrompts([]);
-      setOperationMessage("已停止当前回合，待发送消息已清除。");
+      setOperationMessage("Claude 会话已中断，可以继续发送消息。");
+      setLiveMessage("Claude 会话已中断，可以继续发送消息。");
     } catch (error) {
       reportError(error);
     }
@@ -1190,6 +1256,7 @@ export default function App() {
   }, []);
 
   const runState = getChatRunState(chat);
+  const modelSwitchBlocked = isModelSwitchBlocked(runState);
   const lifecycleBusy =
     sending ||
     transitionBusy ||
@@ -1320,8 +1387,8 @@ export default function App() {
           expectedGeneration = generation;
           const hasLoadedConversation = Boolean(sessionId);
           const loadedProfile =
-            conversations.find((c) => c.sessionId === sessionId)?.profileId ??
             selectedProfile?.id ??
+            conversations.find((c) => c.sessionId === sessionId)?.profileId ??
             null;
           const session = await startSession(
             hasLoadedConversation
@@ -1390,9 +1457,9 @@ export default function App() {
           expectedGeneration = recoveryGeneration;
           try {
             const loadedProfile =
+              selectedProfile?.id ??
               conversations.find((item) => item.sessionId === sessionId)
                 ?.profileId ??
-              selectedProfile?.id ??
               null;
             const recovered = await startSession(
               {
@@ -1640,10 +1707,10 @@ export default function App() {
           type: "session-leaving",
           sessionId: oldSessionId,
           runId: current.runId,
+          reason: "interrupted",
         });
       }
-      void commands
-        .stopClaudeSession(oldSessionId, current.runId ?? "")
+      void stopSessionWithFallback(oldSessionId, current.runId ?? "")
         .catch(reportError)
         .finally(() => {
           if (!transitionIsCurrent(generation)) return;
@@ -1669,7 +1736,7 @@ export default function App() {
       return;
     }
     if (!current.runId) return;
-    await commands.stopClaudeSession(current.sessionId, current.runId);
+    await stopSessionWithFallback(current.sessionId, current.runId);
   }, []);
 
   const recoverCurrentSession = useCallback(async () => {
@@ -1685,13 +1752,13 @@ export default function App() {
     const generation = beginTransition();
     try {
       if (!current.processReleased) {
-        await commands.stopClaudeSession(current.sessionId, current.runId);
+        await stopSessionWithFallback(current.sessionId, current.runId);
       }
       if (!transitionIsCurrent(generation)) return;
       const loadedProfile =
+        selectedProfile?.id ??
         conversations.find((item) => item.sessionId === current.sessionId)
           ?.profileId ??
-        selectedProfile?.id ??
         null;
       await startSession(
         {
@@ -1801,7 +1868,11 @@ export default function App() {
   );
 
   const respondToPermission = useCallback(
-    async (requestId: string, behavior: PermissionDecision) => {
+    async (
+      requestId: string,
+      behavior: PermissionDecision,
+      automatic = false,
+    ) => {
       const current = chatRef.current;
       const sessionId = current.sessionId;
       const runId = current.runId;
@@ -1820,7 +1891,10 @@ export default function App() {
         return;
 
       pendingPermissionRef.current.add(requestId);
-      setPermissionBusy(true);
+      if (!automatic) {
+        autoApprovalBlockedRef.current.delete(requestId);
+      }
+      setPermissionBusyIds((current) => new Set(current).add(requestId));
       const rule = permissionRuleFor(pending);
       const transportBehavior =
         behavior === "deny-interrupt"
@@ -1842,7 +1916,9 @@ export default function App() {
             { id: "session-" + requestId, ...rule },
           ];
         } else if (behavior === "always") {
-          const next = await commands.savePermissionRule(rule);
+          const next = await withPermissionTimeout(
+            commands.savePermissionRule(rule),
+          );
           queryClient.setQueryData(["permission-rules"], next);
         }
 
@@ -1854,13 +1930,17 @@ export default function App() {
           behavior: transportBehavior === "allow" ? "allow" : "deny",
           interrupted: transportBehavior === "deny-interrupt",
         });
-        await commands.respondToPermission({
-          sessionId,
-          runId,
-          requestId,
-          behavior: transportBehavior,
-        });
+        await withPermissionTimeout(
+          commands.respondToPermission({
+            sessionId,
+            runId,
+            requestId,
+            behavior: transportBehavior,
+          }),
+        );
+        autoApprovalBlockedRef.current.delete(requestId);
       } catch (error) {
+        autoApprovalBlockedRef.current.add(requestId);
         const code =
           error && typeof error === "object" && "code" in error
             ? String((error as { code?: unknown }).code ?? "")
@@ -1872,10 +1952,23 @@ export default function App() {
           requestId,
           code,
         });
-        reportError(error);
+        if (code === "PERMISSION_RESPONSE_TIMEOUT") {
+          setOperationMessage(
+            automatic
+              ? "自动处理权限没有响应，请手动确认。"
+              : "权限处理没有响应，请重新确认。",
+          );
+          setLiveMessage("权限处理没有响应，请重新确认。");
+        } else {
+          reportError(error);
+        }
       } finally {
         pendingPermissionRef.current.delete(requestId);
-        setPermissionBusy(pendingPermissionRef.current.size > 0);
+        setPermissionBusyIds((current) => {
+          const next = new Set(current);
+          next.delete(requestId);
+          return next;
+        });
       }
     },
     [queryClient, reportError],
@@ -1899,12 +1992,10 @@ export default function App() {
         return;
       }
       pendingPermissionRef.current.add(requestId);
-      setPermissionBusy(true);
+      setPermissionBusyIds((current) => new Set(current).add(requestId));
       try {
-        await commands.retryPermission(
-          current.sessionId,
-          current.runId,
-          requestId,
+        await withPermissionTimeout(
+          commands.retryPermission(current.sessionId, current.runId, requestId),
         );
         dispatchChat({
           type: "permission-retried",
@@ -1918,7 +2009,11 @@ export default function App() {
         reportError(error);
       } finally {
         pendingPermissionRef.current.delete(requestId);
-        setPermissionBusy(pendingPermissionRef.current.size > 0);
+        setPermissionBusyIds((current) => {
+          const next = new Set(current);
+          next.delete(requestId);
+          return next;
+        });
       }
     },
     [reportError],
@@ -1942,8 +2037,11 @@ export default function App() {
     const hasSavedRule = [...persistent, ...sessionRules].some((rule) =>
       permissionRuleMatches(rule, pending),
     );
-    if (risk.level === "low" || hasSavedRule) {
-      void respondToPermission(pending.requestId!, "allow");
+    if (
+      (risk.level === "low" || hasSavedRule) &&
+      !autoApprovalBlockedRef.current.has(pending.requestId!)
+    ) {
+      void respondToPermission(pending.requestId!, "allow", true);
     }
   }, [
     chat.pendingPermission,
@@ -2099,6 +2197,7 @@ export default function App() {
           profiles={profiles}
           loading={profilesQuery.isPending}
           busy={modelMutationBusy}
+          selectionDisabled={modelSwitchBlocked}
           model={bootstrap?.model}
           modelSaving={modelMutation.isPending}
           onSaveModel={(value) => modelMutation.mutate({ value, clear: false })}
@@ -2228,6 +2327,7 @@ export default function App() {
             }
             profile={selectedProfile}
             status={runState}
+            terminationReason={chat.terminationReason}
             panelOpen={panelOpen}
             onTogglePanel={() => setPanelOpen((open) => !open)}
             onSelectModel={() => {
@@ -2239,7 +2339,7 @@ export default function App() {
           <ChatTranscript
             messages={chat.messages}
             activePermission={chat.pendingPermission}
-            permissionBusy={permissionBusy}
+            busyPermissionIds={permissionBusyIds}
             activeTool={chat.activeTool}
             onPermission={respondToPermission}
             onRetryPermission={retryPermission}

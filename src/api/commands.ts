@@ -154,6 +154,8 @@ export const commands = {
     }),
   sendClaudeMessage: (request: SendClaudeMessageRequest) =>
     call<CompositionResult>("send_claude_message", { request }),
+  forceStopClaudeSession: (sessionId: string, runId: string) =>
+    call<void>("force_stop_claude_session", { sessionId, runId }),
   stopClaudeSession: (sessionId: string, runId: string) =>
     call<void>("stop_claude_session", { sessionId, runId }),
   respondToPermission: (request: PermissionResponseRequest) =>

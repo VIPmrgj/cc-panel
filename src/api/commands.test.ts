@@ -183,4 +183,13 @@ describe("Tauri command contracts", () => {
       field: "settingsRevision",
     });
   });
+
+  it("wraps force stop commands", async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    await commands.forceStopClaudeSession("session-1", "run-1");
+    expect(invokeMock).toHaveBeenLastCalledWith("force_stop_claude_session", {
+      sessionId: "session-1",
+      runId: "run-1",
+    });
+  });
 });

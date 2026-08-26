@@ -436,6 +436,23 @@ pub async fn stop_claude_session(
 }
 
 #[tauri::command]
+pub async fn force_stop_claude_session(
+    session_id: String,
+    run_id: String,
+    state: State<'_, AppState>,
+) -> ApiResult<()> {
+    let handle =
+        state.sessions.active_handle().await.ok_or_else(|| {
+            ApiError::new("SESSION_NOT_ACTIVE", "当前没有活动的 Claude 会话。", true)
+        })?;
+    if handle.session_id() != session_id || handle.run_id().to_string() != run_id {
+        return Err(ApiError::new("SESSION_NOT_ACTIVE", "会话已切换。", true));
+    }
+    handle.force_stop().await.map_err(session_error)?;
+    wait_for_run_release(&state.sessions, handle.run_id(), Duration::from_secs(8)).await
+}
+
+#[tauri::command]
 pub async fn respond_to_permission(
     request: PermissionResponseRequest,
     state: State<'_, AppState>,

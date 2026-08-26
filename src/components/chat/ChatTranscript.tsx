@@ -15,7 +15,7 @@ import {
 interface Props {
   messages: ChatMessage[];
   activePermission?: ChatMessage | null;
-  permissionBusy?: boolean;
+  busyPermissionIds?: ReadonlySet<string>;
   activeTool?: ActiveTool | null;
   onPermission: (requestId: string, behavior: PermissionDecision) => void;
   onRetryPermission: (requestId: string) => void;
@@ -23,11 +23,12 @@ interface Props {
 
 /** Distance from the bottom still treated as "pinned to the bottom". */
 const BOTTOM_PIN_THRESHOLD_PX = 64;
+const EMPTY_PERMISSION_IDS: ReadonlySet<string> = new Set();
 
 export function ChatTranscript({
   messages,
   activePermission,
-  permissionBusy = false,
+  busyPermissionIds = EMPTY_PERMISSION_IDS,
   activeTool,
   onPermission,
   onRetryPermission,
@@ -98,8 +99,10 @@ export function ChatTranscript({
               key={message.id}
               message={message}
               permissionBusy={
-                permissionBusy ||
-                (message.role === "permission" && message.status !== "pending")
+                message.role === "permission" &&
+                message.requestId != null &&
+                message.status === "pending" &&
+                busyPermissionIds.has(message.requestId)
               }
               onPermission={onPermission}
               onRetryPermission={onRetryPermission}
@@ -119,7 +122,7 @@ export function ChatTranscript({
             input={activePermission.toolInput}
             expiresAt={activePermission.permissionExpiresAt}
             pendingCount={pendingPermissionCount}
-            busy={permissionBusy}
+            busy={busyPermissionIds.has(activePermission.requestId)}
             onRespond={(behavior) =>
               onPermission(activePermission.requestId!, behavior)
             }
@@ -172,17 +175,22 @@ const MessageBubble = memo(function MessageBubble({
               </ReactMarkdown>
             </div>
           ))}
-        {message.role === "permission" && message.requestId && onPermission && (
-          <PermissionCard
-            requestId={message.requestId}
-            toolName={message.toolName}
-            input={message.toolInput}
-            expiresAt={message.permissionExpiresAt}
-            busy={permissionBusy}
-            onRespond={(behavior) => onPermission(message.requestId!, behavior)}
-            onRetry={() => onRetryPermission?.(message.requestId!)}
-          />
-        )}
+        {message.role === "permission" &&
+          message.status === "pending" &&
+          message.requestId &&
+          onPermission && (
+            <PermissionCard
+              requestId={message.requestId}
+              toolName={message.toolName}
+              input={message.toolInput}
+              expiresAt={message.permissionExpiresAt}
+              busy={permissionBusy}
+              onRespond={(behavior) =>
+                onPermission(message.requestId!, behavior)
+              }
+              onRetry={() => onRetryPermission?.(message.requestId!)}
+            />
+          )}
         {message.blocks?.map((block, index) => (
           <BlockCard
             block={block}

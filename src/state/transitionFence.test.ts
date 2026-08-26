@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   beginTransitionState,
   finishTransitionState,
+  isModelSwitchBlocked,
+  shouldRestartConversation,
   transitionGenerationMatches,
   transitionIsCurrent,
   type TransitionFenceState,
@@ -47,5 +49,41 @@ describe("transition fence", () => {
 
     expect(transitionGenerationMatches(finished, begun.generation)).toBe(true);
     expect(transitionIsCurrent(finished, begun.generation)).toBe(false);
+  });
+});
+
+describe("model switch policy", () => {
+  it("blocks switching while Claude is producing the current turn", () => {
+    expect(isModelSwitchBlocked("thinking")).toBe(true);
+    expect(isModelSwitchBlocked("tool-running")).toBe(true);
+    expect(isModelSwitchBlocked("awaiting-permission")).toBe(true);
+    expect(isModelSwitchBlocked("stalled")).toBe(true);
+  });
+
+  it("restarts a live conversation only after its turn is complete", () => {
+    expect(
+      shouldRestartConversation(
+        {
+          sessionId: "session-1",
+          runId: "run-1",
+          processReleased: false,
+          turnStatus: "idle",
+          pendingPermission: null,
+        },
+        "idle",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRestartConversation(
+        {
+          sessionId: "session-1",
+          runId: "run-1",
+          processReleased: false,
+          turnStatus: "running",
+          pendingPermission: null,
+        },
+        "thinking",
+      ),
+    ).toBe(false);
   });
 });

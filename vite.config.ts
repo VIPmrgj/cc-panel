@@ -22,6 +22,23 @@ export default defineConfig({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "markdown-vendor": ["react-markdown", "rehype-highlight"],
+          "tauri-vendor": [
+            "@tauri-apps/api",
+            "@tauri-apps/plugin-clipboard-manager",
+            "@tauri-apps/plugin-dialog",
+            "@tauri-apps/plugin-notification",
+          ],
+          "query-vendor": ["@tanstack/react-query"],
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

@@ -29,6 +29,8 @@ export type ChatRunState =
 
 export type RecoveryStatus = "none" | "suspected" | "recovering";
 
+export type SessionTerminationReason = "switching-model" | "interrupted";
+
 /** Live state of the tool Claude is currently executing, fed by `tool_progress`. */
 export interface ActiveTool {
   toolUseId: string;
@@ -47,6 +49,7 @@ export interface ChatState {
   lifecycle: ClaudeLifecycleStatus | "disconnected";
   processReleased: boolean;
   interruptionRequested: boolean;
+  terminationReason: SessionTerminationReason | null;
   turnStatus: TurnStatus;
   activeTurnId: string | null;
   activeAssistantId: string | null;
@@ -68,6 +71,7 @@ export const initialChatState: ChatState = {
   lifecycle: "disconnected",
   processReleased: true,
   interruptionRequested: false,
+  terminationReason: null,
   turnStatus: "idle",
   activeTurnId: null,
   activeAssistantId: null,
@@ -94,6 +98,7 @@ export type ChatAction =
       generation?: number;
       sessionId: string;
       runId: string;
+      reason?: SessionTerminationReason;
     }
   | {
       type: "session-loading";
@@ -169,6 +174,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       runId: action.runId ?? null,
       processReleased: !action.sessionId,
       interruptionRequested: false,
+      terminationReason: null,
     };
   }
 
@@ -180,6 +186,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       ...state,
       viewGeneration: generation,
       lifecycle: "stopping",
+      terminationReason: action.reason ?? state.terminationReason,
+      statusMessage:
+        action.reason === "switching-model"
+          ? "Claude 正在切换模型…"
+          : action.reason === "interrupted"
+            ? "Claude 会话正在中断…"
+            : state.statusMessage,
       ...clearActiveTurn(state.messages),
     };
   }
@@ -194,6 +207,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       lifecycle: "starting",
       processReleased: false,
       interruptionRequested: false,
+      terminationReason: null,
       ...clearActiveTurn(state.messages),
       statusMessage: null,
     };
@@ -213,6 +227,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       lifecycle: "starting",
       processReleased: false,
       interruptionRequested: false,
+      terminationReason: null,
       ...clearActiveTurn(state.messages),
       statusMessage: null,
       lastSequence: -1,
@@ -232,6 +247,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       sessionId: action.sessionId,
       activeTool: null,
       recoveryStatus: "none",
+      terminationReason: null,
       messages: action.messages,
       pendingPermission,
       turnStatus: pendingPermission ? "awaiting-permission" : "idle",
@@ -245,6 +261,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       ...state,
       recoveryStatus: "none",
       lastEventAt: Date.now(),
+      terminationReason: null,
       turnStatus: "running",
       activeTurnId: action.turnId,
       activeAssistantId: null,
@@ -319,8 +336,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           ? "awaiting-permission"
           : "running",
       interruptionRequested: interrupted || state.interruptionRequested,
+      terminationReason: interrupted ? "interrupted" : state.terminationReason,
       statusMessage: interrupted
-        ? "已拒绝权限并中断当前回合，可以继续发送消息。"
+        ? "已拒绝权限，Claude 会话已中断，可以继续发送消息。"
         : state.statusMessage,
       pendingPermission: nextPermission,
       messages,
@@ -346,6 +364,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     return {
       ...state,
       interruptionRequested: false,
+      terminationReason: null,
       turnStatus: "awaiting-permission",
       pendingPermission: findPendingPermission(messages),
       messages,
@@ -455,9 +474,13 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
           : state.recoveryStatus,
         processReleased: state.processReleased || processReleased,
         statusMessage:
-          event.status === "interrupted" && state.interruptionRequested
-            ? "当前回合已中断，可以继续发送消息。"
-            : (event.message ?? null),
+          state.terminationReason === "switching-model"
+            ? "Claude 正在切换模型…"
+            : state.terminationReason === "interrupted"
+              ? "Claude 会话已中断，可以继续发送消息。"
+              : event.status === "interrupted" && state.interruptionRequested
+                ? "当前回合已中断，可以继续发送消息。"
+                : (event.message ?? null),
         turnStatus:
           processReleased && state.turnStatus === "running"
             ? "failed"
@@ -465,13 +488,17 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
               ? "awaiting-permission"
               : state.turnStatus,
         pendingPermission:
-          event.status === "awaiting-permission"
-            ? state.pendingPermission
-            : null,
+          processReleased || event.status === "interrupted"
+            ? null
+            : state.pendingPermission,
+        // A lifecycle update is not a permission response. Claude can emit a
+        // running update while several tool requests are still queued, so
+        // resolving pending permissions here makes their buttons look dead
+        // and loses the queue. Only terminal lifecycle states may close them.
         messages:
-          event.status === "awaiting-permission"
-            ? state.messages
-            : resolvePendingPermissions(state.messages),
+          processReleased || event.status === "interrupted"
+            ? resolvePendingPermissions(state.messages)
+            : state.messages,
         activeTool:
           event.status === "awaiting-permission"
             ? state.activeTool
@@ -576,8 +603,17 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
     case "result":
       return {
         ...state,
-        turnStatus: event.success ? "idle" : "failed",
-        statusMessage: event.stopReason ?? null,
+        turnStatus: state.terminationReason
+          ? "idle"
+          : event.success
+            ? "idle"
+            : "failed",
+        statusMessage:
+          state.terminationReason === "switching-model"
+            ? "Claude 正在切换模型…"
+            : state.terminationReason === "interrupted"
+              ? "Claude 会话已中断，可以继续发送消息。"
+              : (event.stopReason ?? null),
         activeTurnId: null,
         activeAssistantId: null,
         activeTool: null,
@@ -614,14 +650,27 @@ function reduceEvent(state: ChatState, event: ClaudeRunEvent): ChatState {
           };
         }
       }
-      if (state.interruptionRequested && state.lifecycle === "interrupted") {
+      if (
+        state.terminationReason === "switching-model" ||
+        state.terminationReason === "interrupted" ||
+        state.interruptionRequested
+      ) {
         return {
           ...state,
-          statusMessage: "当前回合已中断，可以继续发送消息。",
+          statusMessage:
+            state.terminationReason === "switching-model"
+              ? "Claude 正在切换模型…"
+              : "Claude 会话已中断，可以继续发送消息。",
           turnStatus: "idle",
           activeTurnId: null,
+          activeAssistantId: null,
           activeTool: null,
           pendingPermission: null,
+          messages: settleThinkingMessages(
+            finalizeRunningAssistants(
+              resolvePendingPermissions(state.messages),
+            ),
+          ),
         };
       }
       return {

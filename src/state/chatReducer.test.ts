@@ -281,12 +281,14 @@ describe("chatReducer", () => {
       generation: 4,
       sessionId: "session-parent",
       runId: "run-parent",
+      reason: "switching-model",
     });
     expect(state).toMatchObject({
       viewGeneration: 4,
       sessionId: "session-parent",
       runId: "run-parent",
       lifecycle: "stopping",
+      terminationReason: "switching-model",
     });
 
     state = chatReducer(state, {
@@ -378,6 +380,44 @@ describe("chatReducer", () => {
     expect(state.pendingPermission).toBeNull();
     expect(state.turnStatus).toBe("running");
   });
+  it("keeps queued permissions pending during non-terminal lifecycle updates", () => {
+    let state = chatReducer(initialChatState, {
+      type: "reset",
+      sessionId: "session-1",
+      runId: "run-1",
+    });
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(1, {
+        type: "permission",
+        requestId: "request-1",
+        toolName: "Bash",
+        input: { command: "first" },
+      }),
+    });
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(2, {
+        type: "permission",
+        requestId: "request-2",
+        toolName: "Bash",
+        input: { command: "second" },
+      }),
+    });
+
+    state = chatReducer(state, {
+      type: "envelope",
+      envelope: envelope(3, { type: "lifecycle", status: "running" }),
+    });
+
+    expect(state.pendingPermission?.requestId).toBe("request-1");
+    expect(
+      state.messages
+        .filter((message) => message.role === "permission")
+        .map((message) => message.status),
+    ).toEqual(["pending", "pending"]);
+  });
+
   it("tracks permission requests, responses in history, lifecycle, and errors", () => {
     let state = chatReducer(initialChatState, {
       type: "reset",
@@ -758,6 +798,7 @@ describe("chatReducer", () => {
     });
     expect(state.turnStatus).toBe("idle");
     expect(state.interruptionRequested).toBe(true);
+    expect(state.terminationReason).toBe("interrupted");
 
     state = chatReducer(state, {
       type: "envelope",
@@ -769,7 +810,7 @@ describe("chatReducer", () => {
     });
     expect(state.lifecycle).toBe("interrupted");
     expect(state.turnStatus).toBe("idle");
-    expect(state.statusMessage).toContain("可以继续发送");
+    expect(state.statusMessage).toContain("Claude 会话已中断");
 
     state = chatReducer(state, {
       type: "envelope",

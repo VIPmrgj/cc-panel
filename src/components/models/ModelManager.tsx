@@ -6,6 +6,7 @@ interface Props {
   profiles: ModelProfile[];
   loading?: boolean;
   busy?: boolean;
+  selectionDisabled?: boolean;
   model?: ModelStatus;
   modelSaving?: boolean;
   onAdd: () => void;
@@ -20,6 +21,7 @@ export function ModelManager({
   profiles,
   loading = false,
   busy = false,
+  selectionDisabled = false,
   model,
   modelSaving = false,
   onAdd,
@@ -70,7 +72,7 @@ export function ModelManager({
                 type="button"
                 className="model-profile__select"
                 aria-pressed={profile.selected}
-                disabled={busy}
+                disabled={busy || selectionDisabled}
                 onClick={() => onSelect(profile.selected ? null : profile.id)}
               >
                 <span className="model-profile__check" aria-hidden="true">
@@ -97,7 +99,7 @@ export function ModelManager({
                 <button
                   type="button"
                   aria-label={`编辑 ${profile.providerName}`}
-                  disabled={busy}
+                  disabled={busy || selectionDisabled}
                   onClick={() => onEdit(profile)}
                 >
                   <Pencil size={13} aria-hidden="true" />
@@ -106,7 +108,7 @@ export function ModelManager({
                   type="button"
                   className="danger-icon"
                   aria-label={`删除 ${profile.providerName}`}
-                  disabled={busy}
+                  disabled={busy || selectionDisabled}
                   onClick={() => onDelete(profile.id)}
                 >
                   <Trash2 size={13} aria-hidden="true" />

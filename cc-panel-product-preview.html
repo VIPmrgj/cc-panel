@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="CC Panel：把 Claude Code Agent 的对话、工具、权限和结果放进一个清晰的 Windows 本地工作台。"
+    />
+    <meta name="theme-color" content="#111111" />
+    <title>CC Panel — 看得见的 Agent 工作台</title>
+    <style>
+      :root {
+        --ink: #101010;
+        --paper: #f5f5f2;
+        --white: #fff;
+        --muted: #70706d;
+        --line: #d9d9d4;
+        --darkline: #3c3c3a;
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+        line-height: 1.65;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      button {
+        font: inherit;
+      }
+      :focus-visible {
+        outline: 2px solid #111;
+        outline-offset: 4px;
+      }
+      .wrap {
+        width: min(1180px, calc(100% - 48px));
+        margin: 0 auto;
+      }
+      .topbar {
+        height: 74px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logo {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.17em;
+      }
+      .nav {
+        display: flex;
+        gap: 26px;
+        font-size: 13px;
+        color: #696966;
+      }
+      .nav a {
+        transition: color 0.2s;
+      }
+      .nav a:hover {
+        color: #111;
+      }
+      .nav-cta {
+        border: 1px solid #111;
+        padding: 8px 14px;
+        font-size: 12px;
+        background: transparent;
+        transition: 0.25s;
+        cursor: pointer;
+      }
+      .nav-cta:hover {
+        color: #fff;
+        background: #111;
+      }
+      .hero {
+        padding: 92px 0 105px;
+        display: grid;
+        grid-template-columns: 1.02fr 0.98fr;
+        gap: 78px;
+        align-items: center;
+      }
+      .kicker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #777;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        font-weight: 750;
+      }
+      .kicker:before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        background: #111;
+        border-radius: 50%;
+        animation: blink 2.5s infinite;
+      }
+      h1 {
+        font-size: clamp(50px, 7vw, 88px);
+        letter-spacing: -0.075em;
+        line-height: 1.01;
+        margin: 25px 0 28px;
+        max-width: 650px;
+      }
+      .lead {
+        max-width: 510px;
+        color: #696966;
+        font-size: 17px;
+        line-height: 1.85;
+        margin: 0;
+      }
+      .button-row {
+        display: flex;
+        gap: 11px;
+        flex-wrap: wrap;
+        margin-top: 36px;
+      }
+      .button {
+        min-height: 45px;
+        padding: 0 19px;
+        border: 1px solid #111;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          transform 0.25s var(--ease),
+          background 0.25s,
+          color 0.25s;
+      }
+      .button:hover {
+        transform: translateY(-3px);
+      }
+      .button-dark {
+        background: #111;
+        color: #fff;
+      }
+      .button-dark:hover {
+        background: #30302e;
+      }
+      .button-light {
+        background: transparent;
+      }
+      .button-light:hover {
+        background: #e8e8e4;
+      }
+      .hero-note {
+        font-size: 11px;
+        color: #8a8a86;
+        margin-top: 16px;
+      }
+      .screen {
+        background: #111;
+        padding: 12px;
+        box-shadow: 18px 18px 0 #dcdcd7;
+        transform: rotate(1deg);
+        animation: lift 6s ease-in-out infinite;
+      }
+      .screen-inner {
+        background: #fbfbf9;
+        min-height: 427px;
+        overflow: hidden;
+      }
+      .screen-bar {
+        height: 38px;
+        border-bottom: 1px solid #deded9;
+        padding: 0 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .screen-bar i {
+        width: 7px;
+        height: 7px;
+        background: #c9c9c5;
+        border-radius: 50%;
+      }
+      .screen-bar span {
+        margin-left: auto;
+        font-size: 9px;
+        color: #999;
+        letter-spacing: 0.12em;
+      }
+      .screen-body {
+        display: grid;
+        grid-template-columns: 124px 1fr;
+      }
+      .screen-side {
+        background: #f0f0ec;
+        border-right: 1px solid #deded9;
+        padding: 17px 11px;
+        min-height: 389px;
+      }
+      .screen-logo {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        margin-bottom: 28px;
+      }
+      .screen-label {
+        font-size: 9px;
+        color: #999;
+        margin: 15px 7px 6px;
+      }
+      .screen-item {
+        font-size: 10px;
+        color: #777;
+        padding: 8px 7px;
+      }
+      .screen-item.active {
+        background: #111;
+        color: #fff;
+      }
+      .screen-main {
+        padding: 19px 23px;
+      }
+      .screen-title {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid #deded9;
+        padding-bottom: 13px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .screen-status {
+        font-size: 10px;
+        color: #666;
+        font-weight: 400;
+      }
+      .screen-status:before {
+        content: "";
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: #111;
+        border-radius: 50%;
+        margin-right: 5px;
+      }
+      .transcript {
+        padding-top: 22px;
+      }
+      .transcript small {
+        color: #999;
+        font-size: 10px;
+      }
+      .transcript h3 {
+        font-size: 20px;
+        letter-spacing: -0.05em;
+        margin: 7px 0 17px;
+      }
+      .message {
+        border-left: 2px solid #111;
+        padding-left: 12px;
+        font-size: 11px;
+        margin-bottom: 18px;
+      }
+      .tool-card {
+        border: 1px solid #d7d7d2;
+        background: #f5f5f1;
+        padding: 13px;
+        font-size: 10px;
+      }
+      .tool-head {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 9px;
+      }
+      .tool-head b {
+        font-size: 11px;
+      }
+      .tool-state {
+        color: #777;
+      }
+      .progress {
+        height: 4px;
+        background: #ddd;
+        margin-top: 14px;
+        overflow: hidden;
+      }
+      .progress i {
+        display: block;
+        width: 67%;
+        height: 100%;
+        background: #111;
+        animation: progress 2.8s ease-in-out infinite;
+      }
+      .signal-row {
+        border-top: 1px solid var(--line);
+        padding-top: 27px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+      }
+      .signal {
+        font-size: 10px;
+        color: #777;
+        letter-spacing: 0.08em;
+      }
+      .signal b {
+        display: block;
+        color: #111;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        margin-bottom: 3px;
+      }
+      .section {
+        padding: 100px 0;
+        border-top: 1px solid var(--line);
+      }
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 28px;
+        margin-bottom: 42px;
+      }
+      h2 {
+        font-size: clamp(34px, 4.7vw, 60px);
+        line-height: 1.04;
+        letter-spacing: -0.07em;
+        margin: 0;
+        max-width: 650px;
+      }
+      .section-intro {
+        max-width: 320px;
+        color: #777;
+        font-size: 14px;
+        margin: 0;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        min-height: 228px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: 0.3s var(--ease);
+      }
+      .card:hover {
+        background: #111;
+        color: #fff;
+        transform: translateY(-6px);
+      }
+      .card-num {
+        font-size: 11px;
+        color: #888;
+      }
+      .card:hover .card-num {
+        color: #aaa;
+      }
+      .card h3 {
+        font-size: 26px;
+        letter-spacing: -0.06em;
+        margin: 0 0 8px;
+      }
+      .card p {
+        color: #777;
+        font-size: 13px;
+        max-width: 250px;
+        margin: 0;
+      }
+      .card:hover p {
+        color: #c8c8c5;
+      }
+      .dark {
+        background: #111;
+        color: #fff;
+        border-top: 0;
+      }
+      .dark .section-intro {
+        color: #aaa;
+      }
+      .tabs {
+        display: flex;
+        gap: 23px;
+        border-bottom: 1px solid #444;
+        margin-bottom: 27px;
+      }
+      .tab {
+        position: relative;
+        color: #8b8b87;
+        background: transparent;
+        border: 0;
+        padding: 12px 0;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tab:after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -1px;
+        height: 2px;
+        background: #fff;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.25s;
+      }
+      .tab.active {
+        color: #fff;
+      }
+      .tab.active:after {
+        transform: scaleX(1);
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: 0.7fr 1.3fr;
+        gap: 70px;
+        align-items: center;
+        min-height: 260px;
+      }
+      .stage-num {
+        font-size: 100px;
+        color: #30302e;
+        letter-spacing: -0.09em;
+        line-height: 1;
+      }
+      .stage h3 {
+        font-size: 31px;
+        letter-spacing: -0.06em;
+        margin: 0 0 12px;
+      }
+      .stage p {
+        max-width: 570px;
+        color: #aaa;
+        margin: 0;
+      }
+      .stage-track {
+        height: 1px;
+        background: #444;
+        margin-top: 27px;
+        position: relative;
+      }
+      .stage-track i {
+        position: absolute;
+        left: 0;
+        top: -1px;
+        height: 3px;
+        background: #fff;
+        transition: width 0.4s var(--ease);
+      }
+      .download {
+        background: #e8e8e4;
+      }
+      .download-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 70px;
+        align-items: start;
+      }
+      .release-box {
+        border: 1px solid #cfcfca;
+        background: #f8f8f5;
+        padding: 24px;
+      }
+      .release-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 18px;
+        margin-bottom: 18px;
+      }
+      .release-top h3 {
+        font-size: 24px;
+        letter-spacing: -0.05em;
+        margin: 0;
+      }
+      .tag {
+        font-size: 10px;
+        background: #111;
+        color: #fff;
+        padding: 5px 8px;
+        letter-spacing: 0.08em;
+      }
+      .release-box p {
+        font-size: 13px;
+        color: #666;
+        margin: 0 0 17px;
+      }
+      .release-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 22px;
+        border-top: 1px solid var(--line);
+      }
+      .release-list li {
+        font-size: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .release-list li:before {
+        content: "+";
+        font-weight: 800;
+        margin-right: 10px;
+      }
+      .release-meta {
+        font-size: 11px;
+        color: #8a8a86;
+      }
+      .details {
+        border-top: 1px solid var(--line);
+      }
+      details {
+        border-bottom: 1px solid var(--line);
+        padding: 16px 0;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 700;
+        list-style: none;
+      }
+      summary::-webkit-details-marker {
+        display: none;
+      }
+      summary:after {
+        content: "+";
+        float: right;
+        color: #888;
+        font-size: 17px;
+        font-weight: 400;
+      }
+      details[open] summary:after {
+        content: "−";
+      }
+      details p,
+      details ul {
+        color: #70706d;
+        font-size: 13px;
+        margin: 12px 0 0;
+        padding-left: 18px;
+      }
+      .limitations {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 75px;
+      }
+      .limit-list {
+        border-top: 1px solid var(--line);
+      }
+      .limit {
+        display: grid;
+        grid-template-columns: 85px 1fr;
+        gap: 19px;
+        padding: 18px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+      }
+      .limit-code {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        color: #888;
+        padding-top: 4px;
+      }
+      .limit p {
+        color: #6e6e6b;
+        margin: 0;
+      }
+      .contact {
+        background: #111;
+        color: #fff;
+        border-top: 0;
+      }
+      .contact .section-intro {
+        color: #aaa;
+      }
+      .contact-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 60px;
+        align-items: end;
+      }
+      .contact h2 {
+        max-width: 600px;
+      }
+      .contact-links {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .contact-link {
+        border-top: 1px solid #444;
+        padding: 13px 0;
+        color: #ddd;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        transition: color 0.2s;
+      }
+      .contact-link:hover {
+        color: #fff;
+      }
+      .contact-link span:last-child {
+        color: #888;
+      }
+      .footer {
+        padding: 24px 0;
+        color: #888;
+        font-size: 11px;
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.8);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes lift {
+        0%,
+        100% {
+          transform: rotate(1deg) translateY(0);
+        }
+        50% {
+          transform: rotate(1deg) translateY(-8px);
+        }
+      }
+      @keyframes progress {
+        0% {
+          width: 19%;
+        }
+        55% {
+          width: 74%;
+        }
+        100% {
+          width: 49%;
+        }
+      }
+      @media (max-width: 850px) {
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 56px;
+        }
+        .screen {
+          max-width: 680px;
+        }
+        .stage,
+        .limitations,
+        .download-grid,
+        .contact-grid {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+        .stage-num {
+          font-size: 70px;
+        }
+      }
+      @media (max-width: 580px) {
+        .wrap {
+          width: calc(100% - 30px);
+        }
+        .topbar {
+          height: 64px;
+        }
+        .nav {
+          display: none;
+        }
+        .nav-cta {
+          padding: 8px 11px;
+        }
+        .hero {
+          padding: 58px 0 76px;
+        }
+        h1 {
+          font-size: 48px;
+        }
+        .lead {
+          font-size: 15px;
+        }
+        .section {
+          padding: 70px 0;
+        }
+        .section-head {
+          display: block;
+        }
+        .section-intro {
+          margin-top: 17px;
+        }
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .signal-row {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .screen-body {
+          grid-template-columns: 93px 1fr;
+        }
+        .screen-side {
+          padding: 15px 8px;
+        }
+        .screen-main {
+          padding: 15px;
+        }
+        .footer {
+          display: block;
+        }
+        .footer span {
+          display: block;
+          margin-top: 7px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *:before,
+        *:after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="wrap topbar">
+      <a class="logo" href="#">CC PANEL</a>
+      <nav class="nav" aria-label="主导航">
+        <a href="#features">功能</a><a href="#workflow">工作方式</a
+        ><a href="#download">下载</a><a href="#limits">已知问题</a>
+      </nav>
+      <a class="nav-cta" href="#download">获取安装包</a>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <div>
+          <div class="kicker">LOCAL AGENT WORKSPACE</div>
+          <h1>让 Agent 的每一步，都看得见。</h1>
+          <p class="lead">
+            CC Panel 把 Claude Code
+            的对话、工具进程、权限请求和项目结果放进一个清晰的 Windows
+            本地工作台。
+          </p>
+          <div class="button-row">
+            <a class="button button-dark" href="#download"
+              >下载 Windows 安装包</a
+            ><a
+              class="button button-light"
+              href="https://github.com/VIPmrgj/cc-panel"
+              target="_blank"
+              rel="noreferrer"
+              >查看 GitHub</a
+            >
+          </div>
+          <p class="hero-note">
+            适合刚接触 Agent 的用户，也保留熟悉终端用户需要的完整控制。
+          </p>
+        </div>
+        <div class="screen" aria-label="CC Panel 界面示意">
+          <div class="screen-inner">
+            <div class="screen-bar">
+              <i></i><i></i><i></i><span>CC PANEL / WORKSPACE</span>
+            </div>
+            <div class="screen-body">
+              <aside class="screen-side">
+                <div class="screen-logo">CC PANEL</div>
+                <div class="screen-label">工作区</div>
+                <div class="screen-item active">当前任务</div>
+                <div class="screen-item">任务模板</div>
+                <div class="screen-label">管理</div>
+                <div class="screen-item">权限中心</div>
+                <div class="screen-item">模型</div>
+                <div class="screen-item">Skills</div>
+              </aside>
+              <section class="screen-main">
+                <div class="screen-title">
+                  <span>整理项目文档</span
+                  ><span class="screen-status">运行中</span>
+                </div>
+                <div class="transcript">
+                  <small>刚刚</small>
+                  <h3>正在处理你的任务</h3>
+                  <div class="message">
+                    我会先检查项目结构，再整理文档并汇总修改结果。
+                  </div>
+                  <div class="tool-card">
+                    <div class="tool-head">
+                      <b>工具进程</b><span class="tool-state">进行中</span>
+                    </div>
+                    <div>读取项目结构</div>
+                    <div class="progress"><i></i></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        <div class="signal-row">
+          <div class="signal"><b>LOCAL FIRST</b>数据留在你的工作区</div>
+          <div class="signal"><b>VISIBLE WORKFLOW</b>过程状态清楚可见</div>
+          <div class="signal"><b>CONTROLLED ACTION</b>重要操作由你确认</div>
+        </div>
+      </section>
+
+      <section id="features" class="wrap section">
+        <div class="section-head">
+          <h2>少一点黑盒，多一点确定感。</h2>
+          <p class="section-intro">
+            你不需要先学会一套复杂命令。描述目标，观察过程，在需要时做决定。
+          </p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <span class="card-num">01 / 对话</span>
+            <div>
+              <h3>自然地说</h3>
+              <p>
+                用普通语言描述任务，消息会按会话顺序处理，不用反复猜测当前状态。
+              </p>
+            </div>
+          </article>
+          <article class="card">
+            <span class="card-num">02 / 权限</span>
+            <div>
+              <h3>清楚地确认</h3>
+              <p>
+                工具名、命令、目录和风险在执行前说明。允许一次、允许本会话或拒绝并中断。
+              </p>
+            </div>
+          </article>
+          <article class="card">
+            <span class="card-num">03 / 结果</span>
+            <div>
+              <h3>回头能看懂</h3>
+              <p>
+                工具进程、文件变化、模型回复和任务状态集中显示，重要结果不会藏起来。
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="dark section">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>任务怎样完成，过程怎样发生。</h2>
+            <p class="section-intro">
+              下面是一个简化流程。点击不同阶段，了解 CC Panel 在做什么。
+            </p>
+          </div>
+          <div class="tabs">
+            <button class="tab active" data-stage="0">提出任务</button
+            ><button class="tab" data-stage="1">确认权限</button
+            ><button class="tab" data-stage="2">执行结果</button>
+          </div>
+          <div class="stage">
+            <div class="stage-num" id="stageNum">01</div>
+            <div>
+              <h3 id="stageTitle">先说清楚你想完成什么</h3>
+              <p id="stageText">
+                你只需要描述目标。CC Panel 会把任务交给
+                Agent，并持续显示正在发生的事情。
+              </p>
+              <div class="stage-track">
+                <i id="stageTrack" style="width: 28%"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="download" class="download section">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>下载并开始体验。</h2>
+            <p class="section-intro">
+              当前提供 Windows 安装包。下载入口指向 GitHub
+              Releases，始终以最新正式版本为准。
+            </p>
+          </div>
+          <div class="download-grid">
+            <div class="release-box">
+              <div class="release-top">
+                <div>
+                  <h3>CC Panel v0.1.27</h3>
+                  <div class="release-meta">Windows · x64 · 正式版本</div>
+                </div>
+                <span class="tag">LATEST</span>
+              </div>
+              <p>
+                建议普通用户下载 GitHub Release 页面中的 NSIS 安装包；MSI
+                版本适合需要企业部署的场景。
+              </p>
+              <ul class="release-list">
+                <li>权限中心支持多请求、过期重试和拒绝后继续对话</li>
+                <li>追加指令进入消息队列，长时间运行时仍可输入</li>
+                <li>显示真实工具进程，清理临时思考状态</li>
+                <li>支持演示模式、DeepSeek 引导和本地模型配置</li>
+              </ul>
+              <a
+                class="button button-dark"
+                href="https://github.com/VIPmrgj/cc-panel/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+                >进入下载页面</a
+              >
+            </div>
+            <div class="details">
+              <details open>
+                <summary>安装前需要知道</summary>
+                <p>
+                  CC Panel 是 Claude Code 的图形控制面板。真实 Agent
+                  对话需要本机可用的 Claude Code 和一个已配置的模型；没有 API
+                  Key 时可以先使用演示模式。
+                </p>
+              </details>
+              <details>
+                <summary>安装包从哪里来</summary>
+                <p>
+                  安装包由 GitHub Actions 在 Windows
+                  环境构建并发布。源代码、构建记录和版本标签均可在 GitHub
+                  仓库查看。
+                </p>
+              </details>
+              <details>
+                <summary>版本迭代说明</summary>
+                <ul>
+                  <li>
+                    <b>v0.1.27</b
+                    >：稳定并发权限请求，修复多权限处理、重试和拒绝流程。
+                  </li>
+                  <li>
+                    <b>v0.1.26</b>：完善首次使用流程、会话状态和工具事件展示。
+                  </li>
+                  <li>
+                    <b>v0.1.25</b>：增加 DeepSeek API 配置引导和模型连接流程。
+                  </li>
+                </ul>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="limits" class="wrap section">
+        <div class="limitations">
+          <div>
+            <div class="kicker">KNOWN LIMITATIONS</div>
+            <h2 style="margin-top: 24px">已知问题，先说清楚。</h2>
+            <p class="section-intro" style="margin-top: 20px">
+              这些内容不会阻止核心试用，但正式发布前仍值得继续处理。
+            </p>
+          </div>
+          <div class="limit-list">
+            <div class="limit">
+              <span class="limit-code">P1 / 验证</span>
+              <p>
+                真实 Claude Code 认证环境的完整 GUI
+                往返仍需要更多不同机器和网络条件下的人工验收。
+              </p>
+            </div>
+            <div class="limit">
+              <span class="limit-code">P1 / 发布</span>
+              <p>
+                安装包目前还没有正式代码签名，部分 Windows 环境可能显示
+                SmartScreen 提示。
+              </p>
+            </div>
+            <div class="limit">
+              <span class="limit-code">P2 / 性能</span>
+              <p>
+                前端生产包仍有较大的主 JS chunk；PDF
+                解析目前在主进程中，大型文件可能影响响应速度。
+              </p>
+            </div>
+            <div class="limit">
+              <span class="limit-code">P2 / 测试</span>
+              <p>
+                自动化测试覆盖核心状态和组件，但权限、进程退出、模型网络异常仍需要更深的集成测试。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="contact section">
+        <div class="wrap contact-grid">
+          <div>
+            <div class="kicker" style="color: #aaa">KEEP IT USEFUL</div>
+            <h2 style="margin-top: 24px">遇到问题，直接告诉我。</h2>
+            <p class="section-intro" style="margin-top: 18px">
+              不需要整理成专业报告。把现象、操作步骤和截图发来，就足够帮助定位。
+            </p>
+          </div>
+          <div class="contact-links">
+            <a
+              class="contact-link"
+              href="https://github.com/VIPmrgj/cc-panel/issues/new"
+              target="_blank"
+              rel="noreferrer"
+              ><span>提交 GitHub 问题反馈</span><span>打开 →</span></a
+            >
+            <a
+              class="contact-link"
+              href="mailto:vipmrgj@163.com?subject=CC%20Panel%20问题反馈"
+              ><span>发送邮件 vipmrgj@163.com</span><span>写邮件 →</span></a
+            >
+            <a
+              class="contact-link"
+              href="https://ifdian.net/a/VIPmrgj"
+              target="_blank"
+              rel="noreferrer"
+              ><span>在爱发电支持 CC Panel</span><span>前往 →</span></a
+            >
+            <a
+              class="contact-link"
+              href="https://github.com/VIPmrgj/cc-panel"
+              target="_blank"
+              rel="noreferrer"
+              ><span>查看源代码与构建记录</span><span>GitHub →</span></a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap footer">
+      <span>CC PANEL / PRODUCT PAGE</span
+      ><span>本页面为 CC Panel 项目产品介绍与下载入口。</span>
+    </footer>
+    <script>
+      const stages = [
+        {
+          num: "01",
+          title: "先说清楚你想完成什么",
+          text: "你只需要描述目标。CC Panel 会把任务交给 Agent，并持续显示正在发生的事情。",
+          width: "28%",
+        },
+        {
+          num: "02",
+          title: "关键操作由你决定",
+          text: "当任务需要读取、修改或执行操作时，权限中心会展示具体请求。你可以允许一次、允许本会话，或拒绝并中断。",
+          width: "62%",
+        },
+        {
+          num: "03",
+          title: "结果和过程都能回看",
+          text: "任务完成后，回复、工具结果和文件变化集中呈现。你可以继续追问，也可以回到之前的任务。",
+          width: "100%",
+        },
+      ];
+      const tabs = [...document.querySelectorAll(".tab")];
+      function renderStage(index) {
+        const stage = stages[index];
+        document.querySelector("#stageNum").textContent = stage.num;
+        document.querySelector("#stageTitle").textContent = stage.title;
+        document.querySelector("#stageText").textContent = stage.text;
+        document.querySelector("#stageTrack").style.width = stage.width;
+        tabs.forEach((tab, i) => tab.classList.toggle("active", i === index));
+      }
+      tabs.forEach((tab, index) =>
+        tab.addEventListener("click", () => renderStage(index)),
+      );
+      let current = 0;
+      setInterval(() => {
+        current = (current + 1) % stages.length;
+        renderStage(current);
+      }, 4600);
+    </script>
+  </body>
+</html>
